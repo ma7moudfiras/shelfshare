@@ -17,23 +17,30 @@ import 'detection_exception.dart';
 /// visualisation output -- must not break the app, so every output is probed
 /// for a recognisable shape instead.
 ///
-/// A real response from `aystro-project` looks like:
+/// A real response from the `aystro-project` REST endpoint looks like:
 /// ```json
-/// {"result": [
+/// {"outputs": [
 ///   {"predictions": {
 ///      "image": {"width": 720, "height": 540},
 ///      "predictions": [
 ///        {"x": 624, "y": 70, "width": 48, "height": 140,
 ///         "confidence": 0.448, "class": "coca-cola", "class_id": 0}
-///      ]}}]}
+///      ]}}],
+///  "profiler_trace": []}
 /// ```
+///
+/// Note `image.width`/`height` come back **null** when the model finds nothing,
+/// so callers pass the source image's own dimensions as a fallback.
 class WorkflowResponseParser {
   const WorkflowResponseParser();
 
-  /// Envelope keys seen from the Workflows API. `result` is what the serverless
-  /// host returns today; `outputs` is accepted because the self-hosted
-  /// inference server uses it.
-  static const _envelopeKeys = ['result', 'outputs'];
+  /// Envelope keys seen from the Workflows API.
+  ///
+  /// `outputs` is what the serverless REST endpoint actually returns -- verified
+  /// against the live host. `result` is accepted too, because some clients and
+  /// tooling (the Roboflow MCP server among them) normalise the envelope to
+  /// that name before handing it on.
+  static const _envelopeKeys = ['outputs', 'result'];
 
   /// Keys that have held a detection list across Roboflow block versions.
   static const _detectionListKeys = ['predictions', 'detections'];

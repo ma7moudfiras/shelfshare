@@ -1,14 +1,14 @@
 {
-  "result": [
+  "outputs": [
     {
       "predictions": {
         "image": { "width": 720, "height": 540 },
         "predictions": [
           {
-            "width": 48,
-            "height": 140,
-            "x": 624,
-            "y": 70,
+            "width": 48.0,
+            "height": 140.0,
+            "x": 624.0,
+            "y": 70.0,
             "confidence": 0.44803252816200256,
             "class_id": 0,
             "class": "coca-cola",
@@ -18,5 +18,6 @@
         ]
       }
     }
-  ]
+  ],
+  "profiler_trace": []
 }

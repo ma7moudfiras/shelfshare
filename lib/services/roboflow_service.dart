@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
@@ -162,7 +163,38 @@ class RoboflowService implements DetectionService {
     final response = await _postWithRetries(body);
     stopwatch.stop();
 
-    return _parser.parse(response, inferenceTime: stopwatch.elapsed);
+    // Roboflow reports `image: {width: null, height: null}` when the model finds
+    // nothing, and the overlay cannot project boxes without dimensions. Decoding
+    // the source image locally guarantees they are always available.
+    final size = await _decodeImageSize(imageBytes);
+
+    return _parser.parse(
+      response,
+      fallbackWidth: size?.width ?? 0,
+      fallbackHeight: size?.height ?? 0,
+      inferenceTime: stopwatch.elapsed,
+    );
+  }
+
+  /// Reads the pixel dimensions of an encoded image without keeping it decoded.
+  ///
+  /// Returns null if the bytes are not a decodable image; the caller then falls
+  /// back to whatever the response reported.
+  Future<({double width, double height})?> _decodeImageSize(
+    Uint8List bytes,
+  ) async {
+    ui.Image? image;
+    try {
+      final codec = await ui.instantiateImageCodec(bytes);
+      final frame = await codec.getNextFrame();
+      image = frame.image;
+      return (width: image.width.toDouble(), height: image.height.toDouble());
+    } catch (_) {
+      return null;
+    } finally {
+      // Free the decoded bitmap immediately; only the dimensions are wanted.
+      image?.dispose();
+    }
   }
 
   /// POSTs [body], retrying transient failures with exponential backoff.

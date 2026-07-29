@@ -138,6 +138,50 @@ ROBOFLOW_BASE_URL=https://serverless.roboflow.com
     });
   });
 
+  group('response envelopes', () {
+    // The serverless REST endpoint returns {"outputs": [...]}. Some tooling --
+    // the Roboflow MCP server among it -- normalises the same payload to
+    // {"result": [...]}. Both must parse to the same thing.
+    test('parses the "outputs" envelope the REST endpoint returns', () async {
+      final (service, _) = serviceReplaying(fixture.readAsStringSync());
+
+      final result = await service.detectProducts(sampleBytes);
+
+      expect(result.count, 1);
+      expect(result.detections.single.className, 'coca-cola');
+    });
+
+    test('parses a normalised "result" envelope identically', () async {
+      final decoded =
+          jsonDecode(fixture.readAsStringSync()) as Map<String, dynamic>;
+      final normalised = jsonEncode({'result': decoded['outputs']});
+
+      final (service, _) = serviceReplaying(normalised);
+
+      final result = await service.detectProducts(sampleBytes);
+
+      expect(result.count, 1);
+      expect(result.detections.single.className, 'coca-cola');
+      expect(result.imageWidth, 720);
+    });
+
+    test('falls back to the source image size when dimensions are null', () async {
+      // Roboflow reports image: {width: null, height: null} when nothing is
+      // detected. Boxes cannot be projected without dimensions, so the service
+      // decodes them from the captured bytes instead.
+      final (service, _) = serviceReplaying(
+        File('test/fixtures/workflow_response_empty.json').readAsStringSync(),
+      );
+
+      final result = await service.detectProducts(sampleBytes);
+
+      expect(result.isEmpty, isTrue);
+      // sample_shelf.jpg is 720x540.
+      expect(result.imageWidth, 720);
+      expect(result.imageHeight, 540);
+    });
+  });
+
   group('proxy mode', () {
     test('never sends the API key to the proxy', () async {
       final (service, captured) = serviceReplaying(
@@ -225,7 +269,7 @@ ROBOFLOW_BASE_URL=https://serverless.roboflow.com
     test('throws a parse exception when no detection output is present', () {
       final (service, _) = serviceReplaying(
         jsonEncode({
-          'result': [
+          'outputs': [
             {'some_other_output': 'nothing detection-shaped here'},
           ],
         }),
@@ -262,7 +306,7 @@ ROBOFLOW_BASE_URL=https://serverless.roboflow.com
   test('empty prediction list yields an empty, non-throwing result', () async {
     final (service, _) = serviceReplaying(
       jsonEncode({
-        'result': [
+        'outputs': [
           {
             'predictions': {
               'image': {'width': 720, 'height': 540},

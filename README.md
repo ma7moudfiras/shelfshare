@@ -219,20 +219,28 @@ surfaces as a typed `DetectionException`:
 
 ### The response
 
-A real response, recorded from the deployed workflow and checked in as
+A real response, recorded from the live serverless endpoint and checked in as
 `test/fixtures/workflow_response.json`:
 
 ```json
-{ "result": [ { "predictions": {
+{ "outputs": [ { "predictions": {
     "image": { "width": 720, "height": 540 },
     "predictions": [
       { "x": 624, "y": 70, "width": 48, "height": 140,
-        "confidence": 0.448, "class": "coca-cola", "class_id": 0 }
-    ] } } ] }
+        "confidence": 0.448, "class": "coca-cola", "class_id": 0,
+        "detection_id": "...", "parent_id": "image" }
+    ] } } ],
+  "profiler_trace": [] }
 ```
 
-Note the envelope key is `result`, not `outputs`, and boxes are **centre-based**
-(`x`/`y` are the centre, not the corner).
+Three things worth knowing, all verified against the live endpoint:
+
+- The envelope key is **`outputs`**. Some tooling (the Roboflow MCP server among
+  it) normalises the same payload to `result`, so the parser accepts both.
+- Boxes are **centre-based** — `x`/`y` are the centre, not the top-left corner.
+- `image.width`/`height` come back **`null` when nothing is detected**. Since
+  boxes cannot be projected without dimensions, `RoboflowService` decodes them
+  from the captured bytes and passes them as a fallback.
 
 `WorkflowResponseParser` parses this **defensively**, and deliberately does not
 hard-code the output name:
@@ -240,7 +248,8 @@ hard-code the output name:
 - It **discovers** which output holds the detections by probing each one for a
   recognisable shape, so renaming `predictions` in the Roboflow editor — or
   adding a visualisation output — will not break the app.
-- It accepts both `result` and `outputs` envelopes (serverless vs. self-hosted).
+- It accepts both `outputs` (the REST endpoint) and `result` (normalised by some
+  tooling) envelopes.
 - It reads **only the fields the UI uses**. Segmentation `points` are dropped at
   parse time and never retained — polygon arrays dwarf the rest of the payload.
 - Image-shaped outputs are decoded to bytes and held in memory for
@@ -290,7 +299,7 @@ flutter analyze
 flutter test
 ```
 
-27 tests, no network and no API key required. The suite covers:
+30 tests, no network and no API key required. The suite covers:
 
 - **Smoke test** (`test/services/roboflow_service_test.dart`) — runs
   `RoboflowService.detectProducts()` over a sample image with the HTTP layer
@@ -299,6 +308,8 @@ flutter test
   parsed correctly.
 - **Request shape** — asserts the outgoing body carries `api_key`, a base64
   `inputs.image`, and parameter names matching the workflow's declared inputs.
+- **Response envelopes** — both `outputs` and `result` parse identically, and a
+  response with null image dimensions falls back to the source image's own size.
 - **Proxy mode** — asserts the request body contains **no** `api_key` and no
   trace of the key when proxied, and that a proxied response parses identically.
 - **Failure handling** — 401 fails fast, 503 retries to the attempt limit,
