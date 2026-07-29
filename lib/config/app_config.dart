@@ -75,6 +75,21 @@ class AppConfig {
   static String get baseUrl =>
       _read('ROBOFLOW_BASE_URL') ?? 'https://serverless.roboflow.com';
 
+  /// Model version run by the workflow, as `<project>/<version>`.
+  ///
+  /// The workflow itself defaults to `aystro-project/1`, which was trained on
+  /// 27 images before most classes existed and therefore only reliably finds
+  /// `coca-cola`. Pointing at the newest trained version is what makes the
+  /// other products show up.
+  ///
+  /// Set `ROBOFLOW_MODEL_ID` in `.env` to pin a different version. On a web
+  /// deployment the server-side `ROBOFLOW_MODEL_ID` takes precedence, so the
+  /// model can be switched from the Vercel dashboard without rebuilding.
+  static String get modelId => _read('ROBOFLOW_MODEL_ID') ?? defaultModelId;
+
+  /// Newest trained version of the `aystro-project` model.
+  static const defaultModelId = 'aystro-project/11';
+
   /// Explicit proxy URL, when set. Overrides the web default and lets a mobile
   /// build be pointed at the same proxy.
   static String? get proxyUrl => _read('ROBOFLOW_PROXY_URL');

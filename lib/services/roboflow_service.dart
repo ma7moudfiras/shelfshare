@@ -24,6 +24,11 @@ import 'workflow_response_parser.dart';
 /// | `max_detections`     | `1000`               |
 /// | `model_id`           | `aystro-project/1`   |
 ///
+/// The workflow's own `model_id` default is version 1, trained on 27 images
+/// before most classes existed. [AppConfig.defaultModelId] points at the newest
+/// trained version instead, which is what makes classes beyond `coca-cola`
+/// appear.
+///
 /// Sending a name the workflow does not declare is rejected by the API, so this
 /// class is the single place those names are written down.
 @immutable
@@ -40,7 +45,7 @@ class RoboflowParameters {
   /// Hard cap on returned detections.
   final int maxDetections;
 
-  /// Model version to run, e.g. `aystro-project/1`.
+  /// Model version to run, e.g. `aystro-project/11`.
   final String modelId;
 
   const RoboflowParameters({
@@ -48,8 +53,15 @@ class RoboflowParameters {
     this.iouThreshold = 0.3,
     this.classAgnosticNms = false,
     this.maxDetections = 1000,
-    this.modelId = 'aystro-project/1',
+    this.modelId = AppConfig.defaultModelId,
   });
+
+  /// Builds parameters using the model configured in `.env`.
+  ///
+  /// Used as the service default so changing `ROBOFLOW_MODEL_ID` takes effect
+  /// without touching code.
+  factory RoboflowParameters.fromConfig() =>
+      RoboflowParameters(modelId: AppConfig.modelId);
 
   /// Serialises to the exact parameter names the workflow declares.
   Map<String, dynamic> toJson() => {
@@ -127,7 +139,7 @@ class RoboflowService implements DetectionService {
     http.Client? client,
     Uri? endpoint,
     bool? useProxy,
-    this.parameters = const RoboflowParameters(),
+    RoboflowParameters? parameters,
     this.timeout = const Duration(seconds: 45),
     this.maxAttempts = 3,
     WorkflowResponseParser parser = const WorkflowResponseParser(),
@@ -138,6 +150,7 @@ class RoboflowService implements DetectionService {
        // ignore: prefer_initializing_formals
        _parser = parser,
        useProxy = useProxy ?? AppConfig.usesProxy,
+       parameters = parameters ?? RoboflowParameters.fromConfig(),
        endpoint = endpoint ?? AppConfig.detectionEndpoint;
 
   /// Base delay for exponential backoff between retries: 500ms, then 1s.

@@ -23,7 +23,11 @@ class CaptureScreen extends StatefulWidget {
   /// placeholder state.
   final DetectionService? detectionService;
 
-  const CaptureScreen({super.key, this.detectionService});
+  /// Camera backend. Injectable so widget tests can drive the capture and
+  /// lifecycle flows without a real device camera.
+  final CameraService? cameraService;
+
+  const CaptureScreen({super.key, this.detectionService, this.cameraService});
 
   @override
   State<CaptureScreen> createState() => _CaptureScreenState();
@@ -31,7 +35,8 @@ class CaptureScreen extends StatefulWidget {
 
 class _CaptureScreenState extends State<CaptureScreen>
     with WidgetsBindingObserver {
-  final CameraService _cameraService = CameraService();
+  late final CameraService _cameraService =
+      widget.cameraService ?? CameraService();
 
   /// Bytes of the current capture, held for both display and re-analysis.
   ///
@@ -45,6 +50,9 @@ class _CaptureScreenState extends State<CaptureScreen>
 
   bool _isCameraReady = false;
   String? _cameraError;
+
+  /// Guards against overlapping [_initializeCamera] calls.
+  bool _isInitializingCamera = false;
 
   @override
   void initState() {
@@ -62,19 +70,45 @@ class _CaptureScreenState extends State<CaptureScreen>
 
   /// Releases the camera when backgrounded and reacquires it on resume --
   /// without this, Android reclaims the sensor and the preview returns black.
+  ///
+  /// Teardown is deliberately tied to `paused`/`hidden` rather than `inactive`.
+  /// `inactive` also fires for transient interruptions -- a file dialog, a
+  /// permission prompt, the iOS control centre -- and tearing the camera down
+  /// for those causes needless flicker on the way back.
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (!_isCameraReady) return;
+    switch (state) {
+      case AppLifecycleState.paused:
+      case AppLifecycleState.hidden:
+        if (_isCameraReady) {
+          _cameraService.dispose();
+          if (mounted) setState(() => _isCameraReady = false);
+        }
 
-    if (state == AppLifecycleState.inactive) {
-      _cameraService.dispose();
-      if (mounted) setState(() => _isCameraReady = false);
-    } else if (state == AppLifecycleState.resumed) {
-      _initializeCamera();
+      case AppLifecycleState.resumed:
+        // Reacquire whenever the viewfinder is what the user is looking at.
+        // This must NOT be gated on _isCameraReady: by this point the camera
+        // has already been released, so gating on it would make the state
+        // unrecoverable and leave the preview permanently blank.
+        if (!_isCameraReady && _capturedBytes == null) {
+          _initializeCamera();
+        }
+
+      case AppLifecycleState.inactive:
+      case AppLifecycleState.detached:
+        break;
     }
   }
 
+  /// Brings the preview up, tolerating concurrent calls.
+  ///
+  /// Resume events and [_reset] can both ask for the camera at once; without
+  /// the in-flight guard that races two controllers into existence and leaks
+  /// the loser.
   Future<void> _initializeCamera() async {
+    if (_isInitializingCamera) return;
+    _isInitializingCamera = true;
+
     try {
       await _cameraService.initialize();
       if (!mounted) return;
@@ -88,6 +122,17 @@ class _CaptureScreenState extends State<CaptureScreen>
         _isCameraReady = false;
         _cameraError = e.description ?? 'Camera unavailable.';
       });
+    } catch (e) {
+      // Browsers report permission and device failures as plain exceptions
+      // rather than CameraException, so this must not go unhandled -- doing so
+      // would leave the spinner up with no explanation.
+      if (!mounted) return;
+      setState(() {
+        _isCameraReady = false;
+        _cameraError = 'Camera unavailable.';
+      });
+    } finally {
+      _isInitializingCamera = false;
     }
   }
 
@@ -151,6 +196,11 @@ class _CaptureScreenState extends State<CaptureScreen>
   }
 
   /// Clears the capture and returns to the live preview.
+  ///
+  /// The camera may have been released while the still was on screen -- by a
+  /// backgrounding, or by the gallery picker taking over -- so the preview is
+  /// restarted rather than assumed live. Without this, Retake drops the user
+  /// onto a permanently blank viewfinder.
   void _reset() {
     setState(() {
       _capturedBytes = null;
@@ -158,6 +208,8 @@ class _CaptureScreenState extends State<CaptureScreen>
       _errorMessage = null;
       _isAnalyzing = false;
     });
+
+    if (!_isCameraReady) _initializeCamera();
   }
 
   @override

@@ -29,6 +29,12 @@ class CameraService {
   /// Throws [CameraException] when no camera is available or permission was
   /// denied; the screen turns that into the gallery-fallback state.
   Future<void> initialize() async {
+    // Release any previous controller first. Re-initialising over a live one
+    // leaks the old controller and, on Android, can leave the sensor held.
+    final previous = _controller;
+    _controller = null;
+    await previous?.dispose();
+
     _cameras = await availableCameras();
 
     if (_cameras.isEmpty) {

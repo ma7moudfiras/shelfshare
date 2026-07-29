@@ -121,7 +121,7 @@ ROBOFLOW_BASE_URL=https://serverless.roboflow.com
           'model_id',
         ]),
       );
-      expect((body['parameters'] as Map)['model_id'], 'aystro-project/1');
+      expect((body['parameters'] as Map)['model_id'], 'aystro-project/11');
     });
 
     test('computes Share of Shelf from the parsed detections', () async {
@@ -135,6 +135,53 @@ ROBOFLOW_BASE_URL=https://serverless.roboflow.com
       expect(share.shares.single.className, 'coca-cola');
       expect(share.shares.single.percentage, closeTo(100, 0.001));
       expect(share.summaryLine, 'coca-cola: 100%');
+    });
+  });
+
+  group('model selection', () {
+    test('defaults to the newest trained model, not the workflow default', () async {
+      final (service, captured) = serviceReplaying(fixture.readAsStringSync());
+
+      await service.detectProducts(sampleBytes);
+
+      // The workflow itself declares aystro-project/1, trained on 27 images
+      // before most classes existed. Shipping that default is what made only
+      // coca-cola appear.
+      final body = jsonDecode(captured.single.body) as Map<String, dynamic>;
+      expect((body['parameters'] as Map)['model_id'], 'aystro-project/11');
+    });
+
+    test('honours ROBOFLOW_MODEL_ID from the environment', () async {
+      dotenv.loadFromString(
+        envString: '''
+ROBOFLOW_API_KEY=test_key
+ROBOFLOW_MODEL_ID=aystro-project/9
+''',
+      );
+
+      final (service, captured) = serviceReplaying(fixture.readAsStringSync());
+      await service.detectProducts(sampleBytes);
+
+      final body = jsonDecode(captured.single.body) as Map<String, dynamic>;
+      expect((body['parameters'] as Map)['model_id'], 'aystro-project/9');
+    });
+
+    test('an explicit parameters object still wins', () async {
+      final captured = <http.Request>[];
+      final client = MockClient((request) async {
+        captured.add(request);
+        return http.Response(fixture.readAsStringSync(), 200);
+      });
+      final service = RoboflowService(
+        client: client,
+        useProxy: false,
+        parameters: const RoboflowParameters(modelId: 'aystro-project/7'),
+      );
+
+      await service.detectProducts(sampleBytes);
+
+      final body = jsonDecode(captured.single.body) as Map<String, dynamic>;
+      expect((body['parameters'] as Map)['model_id'], 'aystro-project/7');
     });
   });
 
@@ -200,7 +247,7 @@ ROBOFLOW_BASE_URL=https://serverless.roboflow.com
 
       // Everything else is identical, so the server can forward it as-is.
       expect((body['inputs'] as Map)['image'], isNotNull);
-      expect((body['parameters'] as Map)['model_id'], 'aystro-project/1');
+      expect((body['parameters'] as Map)['model_id'], 'aystro-project/11');
     });
 
     test('parses a proxied response identically', () async {

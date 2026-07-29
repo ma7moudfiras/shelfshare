@@ -16,7 +16,15 @@
  *   ROBOFLOW_WORKSPACE    -- defaults to "ma7mouds-workspace"
  *   ROBOFLOW_WORKFLOW_ID  -- defaults to "aystro-project"
  *   ROBOFLOW_BASE_URL     -- defaults to "https://serverless.roboflow.com"
+ *   ROBOFLOW_MODEL_ID     -- overrides the model version the client asked for,
+ *                            e.g. "aystro-project/11". Lets a web deployment
+ *                            switch models without rebuilding the Flutter app.
  *   ALLOWED_ORIGIN        -- CORS origin; defaults to same-origin only
+ *
+ * NOTE: ROBOFLOW_API_KEY must be the *private* key from
+ * app.roboflow.com/settings/api. The workspace publishable key (rf_...) is
+ * rejected by the serverless host with "This key is not authorized for
+ * serverless inference".
  */
 
 const DEFAULTS = {
@@ -123,7 +131,16 @@ export default async function handler(req, res) {
     inputs: { image: { type: 'base64', value: image.value } },
   };
   if (body.parameters && typeof body.parameters === 'object') {
-    payload.parameters = body.parameters;
+    payload.parameters = { ...body.parameters };
+  }
+
+  // Server-side model override. A web build bakes its .env in at compile time,
+  // so without this, switching model versions would mean a rebuild. Setting
+  // ROBOFLOW_MODEL_ID in the project environment repoints every request at a
+  // newly trained version immediately after a redeploy.
+  const modelOverride = process.env.ROBOFLOW_MODEL_ID?.trim();
+  if (modelOverride) {
+    payload.parameters = { ...payload.parameters, model_id: modelOverride };
   }
 
   const controller = new AbortController();
