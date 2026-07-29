@@ -1,37 +1,32 @@
-import 'dart:typed_data';
-
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
+import '../models/capture_aspect_ratio.dart';
 import '../models/detection_result.dart';
 import '../models/model_option.dart';
 import '../services/camera_service.dart';
-import '../services/model_catalog_service.dart';
 import '../services/detection_exception.dart';
 import '../services/detection_service.dart';
+import '../services/image_processor.dart';
+import '../services/model_catalog_service.dart';
+import '../theme/app_theme.dart';
 import '../widgets/analysis_settings_sheet.dart';
+import '../widgets/aspect_ratio_selector.dart';
 import '../widgets/capture_controls.dart';
 import '../widgets/detection_overlay.dart';
 import '../widgets/results_panel.dart';
+import 'photo_viewer_screen.dart';
 
 /// Primary screen: frame a shelf, capture it, and read back the analysis.
 ///
-/// Top half is the live preview (or the captured photo with detection boxes
-/// drawn over it); bottom half is the results panel.
+/// The viewfinder is full-bleed and the controls float over it, which is what
+/// every camera app does for a reason -- framing a shelf is easier when the
+/// shelf occupies the whole screen. Results arrive in a draggable sheet so the
+/// photo stays visible behind them.
 class CaptureScreen extends StatefulWidget {
-  /// Backend used to analyse a captured photo.
-  ///
-  /// Nullable so the app remains usable as a pure capture tool before the
-  /// inference backend is wired up -- the results panel simply stays on its
-  /// placeholder state.
   final DetectionService? detectionService;
-
-  /// Camera backend. Injectable so widget tests can drive the capture and
-  /// lifecycle flows without a real device camera.
   final CameraService? cameraService;
-
-  /// Supplies the model/class lists for the settings sheet. Injectable so
-  /// tests can provide a catalog without network access.
   final ModelCatalogService? catalogService;
 
   const CaptureScreen({
@@ -49,11 +44,12 @@ class _CaptureScreenState extends State<CaptureScreen>
     with WidgetsBindingObserver {
   late final CameraService _cameraService =
       widget.cameraService ?? CameraService();
+  late final ModelCatalogService _catalogService =
+      widget.catalogService ?? ModelCatalogService();
 
-  /// Bytes of the current capture, held for both display and re-analysis.
-  ///
-  /// Bytes rather than a file path: `dart:io` is unavailable on web, and the
-  /// overlay renders straight from memory anyway.
+  static const ImageProcessor _imageProcessor = ImageProcessor();
+
+  /// Bytes of the current capture, already cropped to the chosen framing.
   Uint8List? _capturedBytes;
 
   DetectionResult? _result;
@@ -62,18 +58,15 @@ class _CaptureScreenState extends State<CaptureScreen>
 
   bool _isCameraReady = false;
   String? _cameraError;
-
-  /// Guards against overlapping [_initializeCamera] calls.
   bool _isInitializingCamera = false;
-
-  late final ModelCatalogService _catalogService =
-      widget.catalogService ?? ModelCatalogService();
 
   ModelCatalog _catalog = const ModelCatalog.empty();
   bool _isLoadingCatalog = false;
 
-  /// Chosen model version and product filter.
   AnalysisSettings _settings = const AnalysisSettings();
+  CaptureAspectRatio _aspect = CaptureAspectRatio.full;
+
+  static const String _heroTag = 'capture-photo';
 
   @override
   void initState() {
@@ -81,6 +74,14 @@ class _CaptureScreenState extends State<CaptureScreen>
     WidgetsBinding.instance.addObserver(this);
     _initializeCamera();
     _loadCatalog();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _cameraService.dispose();
+    _catalogService.dispose();
+    super.dispose();
   }
 
   /// Loads the model and class lists in the background.
@@ -97,21 +98,11 @@ class _CaptureScreenState extends State<CaptureScreen>
     });
   }
 
-  @override
-  void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    _cameraService.dispose();
-    _catalogService.dispose();
-    super.dispose();
-  }
-
   /// Releases the camera when backgrounded and reacquires it on resume --
   /// without this, Android reclaims the sensor and the preview returns black.
   ///
-  /// Teardown is deliberately tied to `paused`/`hidden` rather than `inactive`.
-  /// `inactive` also fires for transient interruptions -- a file dialog, a
-  /// permission prompt, the iOS control centre -- and tearing the camera down
-  /// for those causes needless flicker on the way back.
+  /// Teardown is tied to `paused`/`hidden` rather than `inactive`, which also
+  /// fires for transient interruptions like a file dialog or permission prompt.
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     switch (state) {
@@ -123,13 +114,10 @@ class _CaptureScreenState extends State<CaptureScreen>
         }
 
       case AppLifecycleState.resumed:
-        // Reacquire whenever the viewfinder is what the user is looking at.
-        // This must NOT be gated on _isCameraReady: by this point the camera
-        // has already been released, so gating on it would make the state
+        // Must NOT be gated on _isCameraReady: by this point the camera has
+        // already been released, so gating on it would make the state
         // unrecoverable and leave the preview permanently blank.
-        if (!_isCameraReady && _capturedBytes == null) {
-          _initializeCamera();
-        }
+        if (!_isCameraReady && _capturedBytes == null) _initializeCamera();
 
       case AppLifecycleState.inactive:
       case AppLifecycleState.detached:
@@ -138,10 +126,6 @@ class _CaptureScreenState extends State<CaptureScreen>
   }
 
   /// Brings the preview up, tolerating concurrent calls.
-  ///
-  /// Resume events and [_reset] can both ask for the camera at once; without
-  /// the in-flight guard that races two controllers into existence and leaks
-  /// the loser.
   Future<void> _initializeCamera() async {
     if (_isInitializingCamera) return;
     _isInitializingCamera = true;
@@ -159,10 +143,9 @@ class _CaptureScreenState extends State<CaptureScreen>
         _isCameraReady = false;
         _cameraError = e.description ?? 'Camera unavailable.';
       });
-    } catch (e) {
-      // Browsers report permission and device failures as plain exceptions
-      // rather than CameraException, so this must not go unhandled -- doing so
-      // would leave the spinner up with no explanation.
+    } catch (_) {
+      // Browsers report permission and device failures as plain exceptions,
+      // and an unhandled one would leave a spinner with no explanation.
       if (!mounted) return;
       setState(() {
         _isCameraReady = false;
@@ -188,16 +171,17 @@ class _CaptureScreenState extends State<CaptureScreen>
     if (photo != null) await _useImage(photo);
   }
 
-  /// Loads [photo] into the preview, then kicks off analysis.
+  /// Loads [photo], crops it to the chosen framing, then analyses it.
   Future<void> _useImage(XFile photo) async {
-    final bytes = await photo.readAsBytes();
+    final raw = await photo.readAsBytes();
+    // Crop before anything else so the still, the overlay and the request all
+    // describe the same pixels.
+    final bytes = await _imageProcessor.cropToAspect(raw, _aspect);
     if (!mounted) return;
 
-    // Release the camera while the still is on screen. Holding a live stream
-    // that nothing is displaying is wasteful everywhere, and on iOS Safari it
-    // is actively harmful: the suspended stream cannot be resumed, so the
-    // preview would come back black. Reacquiring on retake is the only
-    // reliable route to a live preview there.
+    // Release the camera while the still is on screen. On iOS Safari a
+    // suspended stream cannot be resumed, so reacquiring on retake is the only
+    // reliable route back to a live preview.
     _cameraService.dispose();
 
     setState(() {
@@ -210,13 +194,9 @@ class _CaptureScreenState extends State<CaptureScreen>
     await _analyze();
   }
 
-  /// Runs the captured photo through the detection service.
   Future<void> _analyze() async {
     final service = widget.detectionService;
     final bytes = _capturedBytes;
-
-    // No backend wired up yet: leave the panel on its placeholder state rather
-    // than showing a spurious error.
     if (service == null || bytes == null) return;
 
     setState(() {
@@ -244,12 +224,6 @@ class _CaptureScreenState extends State<CaptureScreen>
     }
   }
 
-  /// Opens the settings sheet and applies whatever comes back.
-  ///
-  /// Changing the model re-runs detection, since a different model produces
-  /// different boxes. Changing only the product filter does not: that is a
-  /// view over the existing result, so re-running would waste a call and, on
-  /// this workflow, upload the photo to the dataset again.
   Future<void> _openSettings() async {
     final previousModel = _settings.modelId;
     final previousConfidence = _settings.confidence;
@@ -257,7 +231,7 @@ class _CaptureScreenState extends State<CaptureScreen>
     final updated = await showModalBottomSheet<AnalysisSettings>(
       context: context,
       isScrollControlled: true,
-      showDragHandle: false,
+      useSafeArea: true,
       builder: (_) => AnalysisSettingsSheet(
         models: _catalog.models,
         availableClasses: _classChoices,
@@ -269,23 +243,37 @@ class _CaptureScreenState extends State<CaptureScreen>
 
     setState(() => _settings = updated);
 
+    // Only the model and threshold change what the model returns. A class
+    // filter is a view over the existing result, and re-running would waste a
+    // call and upload the photo to the dataset again.
     final needsReanalysis =
         updated.modelId != previousModel ||
         updated.confidence != previousConfidence;
-    if (needsReanalysis && _capturedBytes != null) {
-      await _analyze();
-    }
+    if (needsReanalysis && _capturedBytes != null) await _analyze();
+  }
+
+  void _openFullScreen() {
+    final bytes = _capturedBytes;
+    if (bytes == null) return;
+
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => PhotoViewerScreen(
+          imageBytes: bytes,
+          result: _visibleResult,
+          heroTag: _heroTag,
+        ),
+      ),
+    );
   }
 
   /// Classes offered in the filter.
   ///
   /// Prefers the project's full class list so products can be selected before
-  /// they are ever detected; falls back to whatever the current result
-  /// contains when the catalog is unavailable.
+  /// they are ever detected; falls back to the current result's classes.
   List<String> get _classChoices {
     if (_catalog.classes.isNotEmpty) return _catalog.classes;
-    final fromResult = _result?.classNames ?? const <String>[];
-    return List<String>.from(fromResult)..sort();
+    return List<String>.from(_result?.classNames ?? const <String>[])..sort();
   }
 
   /// The result as shown: narrowed to the selected products.
@@ -293,11 +281,6 @@ class _CaptureScreenState extends State<CaptureScreen>
       _result?.filterByClasses(_settings.selectedClasses);
 
   /// Clears the capture and returns to the live preview.
-  ///
-  /// The camera may have been released while the still was on screen -- by a
-  /// backgrounding, or by the gallery picker taking over -- so the preview is
-  /// restarted rather than assumed live. Without this, Retake drops the user
-  /// onto a permanently blank viewfinder.
   void _reset() {
     setState(() {
       _capturedBytes = null;
@@ -305,10 +288,8 @@ class _CaptureScreenState extends State<CaptureScreen>
       _errorMessage = null;
       _isAnalyzing = false;
     });
-
     // Unconditional: on iOS Safari the controller can still report ready while
-    // its underlying stream is dead, so trusting the flag leaves a black
-    // preview that only a page refresh clears.
+    // its underlying stream is dead.
     _initializeCamera();
   }
 
@@ -316,58 +297,65 @@ class _CaptureScreenState extends State<CaptureScreen>
   Widget build(BuildContext context) {
     final hasCapture = _capturedBytes != null;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Shelf Monitor'),
-        actions: [
-          IconButton(
-            onPressed: _openSettings,
-            icon: const Icon(Icons.tune),
-            tooltip: 'Analysis settings',
-          ),
-          if (hasCapture)
-            IconButton(
-              onPressed: _reset,
-              icon: const Icon(Icons.close),
-              tooltip: 'Discard capture',
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle.light,
+      child: Scaffold(
+        backgroundColor: Colors.black,
+        // extendBody so the viewfinder runs edge to edge behind the controls.
+        body: Stack(
+          fit: StackFit.expand,
+          children: [
+            _buildStage(),
+            _TopBar(
+              onSettings: _openSettings,
+              onClose: hasCapture ? _reset : null,
+              onFullScreen: hasCapture ? _openFullScreen : null,
             ),
-        ],
-      ),
-      body: Column(
-        children: [
-          Expanded(flex: 3, child: _buildViewfinder()),
-          CaptureControls(
-            canCapture: _isCameraReady && !_isAnalyzing,
-            hasCapture: hasCapture,
-            isBusy: _isAnalyzing,
-            onCapture: _onCapture,
-            onPickFromGallery: _onPickFromGallery,
-            onRetake: _reset,
-          ),
-          Expanded(
-            flex: 2,
-            child: ResultsPanel(
-              result: _visibleResult,
-              isLoading: _isAnalyzing,
-              errorMessage: _errorMessage,
-              onRetry: _analyze,
-              modelId: _settings.modelId,
-              confidence: _settings.confidence,
+            if (!hasCapture && _cameraError == null)
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 168,
+                child: Center(
+                  child: AspectRatioSelector(
+                    selected: _aspect,
+                    onSelected: (a) => setState(() => _aspect = a),
+                  ),
+                ),
+              ),
+            Align(
+              alignment: Alignment.bottomCenter,
+              child: hasCapture
+                  ? _buildResultsSheet()
+                  : _buildCaptureBar(),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 
-  /// The captured photo with boxes, or the live preview when nothing is held.
-  Widget _buildViewfinder() {
+  /// Viewfinder or captured still, filling the screen.
+  Widget _buildStage() {
     final bytes = _capturedBytes;
 
     if (bytes != null) {
-      return ColoredBox(
-        color: Colors.black,
-        child: DetectionOverlay(imageBytes: bytes, result: _visibleResult),
+      return GestureDetector(
+        onTap: _openFullScreen,
+        child: Align(
+          alignment: Alignment.topCenter,
+          child: Padding(
+            // Leaves room for the results sheet so the photo is not hidden.
+            padding: const EdgeInsets.only(bottom: 260),
+            child: Hero(
+              tag: _heroTag,
+              child: DetectionOverlay(
+                imageBytes: bytes,
+                result: _visibleResult,
+              ),
+            ),
+          ),
+        ),
       );
     }
 
@@ -377,18 +365,117 @@ class _CaptureScreenState extends State<CaptureScreen>
     if (!_isCameraReady || controller == null) {
       return const ColoredBox(
         color: Colors.black,
-        child: Center(child: CircularProgressIndicator()),
+        child: Center(
+          child: SizedBox(
+            width: 30,
+            height: 30,
+            child: CircularProgressIndicator(strokeWidth: 2.5),
+          ),
+        ),
       );
     }
 
-    return ColoredBox(
-      color: Colors.black,
-      child: Center(
-        child: AspectRatio(
-          aspectRatio: controller.value.aspectRatio,
-          child: CameraPreview(controller),
+    // Fill the screen and crop overflow, rather than letterboxing: a camera
+    // that shows black bars looks unfinished.
+    return ClipRect(
+      child: _AspectFramedPreview(
+        aspect: _aspect,
+        child: CameraPreview(controller),
+      ),
+    );
+  }
+
+  Widget _buildCaptureBar() {
+    return Container(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.bottomCenter,
+          end: Alignment.topCenter,
+          colors: [Color(0xE6000000), Colors.transparent],
         ),
       ),
+      child: SafeArea(
+        top: false,
+        child: CaptureControls(
+          canCapture: _isCameraReady && !_isAnalyzing,
+          hasCapture: false,
+          isBusy: _isAnalyzing,
+          onCapture: _onCapture,
+          onPickFromGallery: _onPickFromGallery,
+          onRetake: _reset,
+        ),
+      ),
+    );
+  }
+
+  /// Results in a draggable sheet, so the photo behind stays inspectable.
+  Widget _buildResultsSheet() {
+    return DraggableScrollableSheet(
+      initialChildSize: 0.34,
+      minChildSize: 0.18,
+      maxChildSize: 0.85,
+      expand: false,
+      builder: (context, scrollController) {
+        final theme = Theme.of(context);
+        return Container(
+          decoration: BoxDecoration(
+            color: AppTheme.surfaceDarkElevated,
+            borderRadius: const BorderRadius.vertical(
+              top: Radius.circular(24),
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.4),
+                blurRadius: 24,
+                offset: const Offset(0, -6),
+              ),
+            ],
+          ),
+          child: Column(
+            children: [
+              Container(
+                width: 36,
+                height: 4,
+                margin: const EdgeInsets.symmetric(vertical: 10),
+                decoration: BoxDecoration(
+                  color: Colors.white24,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 12, 8),
+                child: Row(
+                  children: [
+                    Text(
+                      'Analysis',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const Spacer(),
+                    TextButton.icon(
+                      onPressed: _reset,
+                      icon: const Icon(Icons.refresh, size: 18),
+                      label: const Text('Retake'),
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: ResultsPanel(
+                  result: _visibleResult,
+                  isLoading: _isAnalyzing,
+                  errorMessage: _errorMessage,
+                  onRetry: _analyze,
+                  modelId: _settings.modelId,
+                  confidence: _settings.confidence,
+                  scrollController: scrollController,
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -401,16 +488,16 @@ class _CaptureScreenState extends State<CaptureScreen>
       color: Colors.black,
       child: Center(
         child: Padding(
-          padding: const EdgeInsets.all(24),
+          padding: const EdgeInsets.all(32),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               const Icon(
                 Icons.no_photography_outlined,
-                color: Colors.white70,
-                size: 38,
+                color: Colors.white38,
+                size: 44,
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 16),
               Text(
                 _cameraError!,
                 textAlign: TextAlign.center,
@@ -418,13 +505,150 @@ class _CaptureScreenState extends State<CaptureScreen>
                   color: Colors.white70,
                 ),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 20),
               FilledButton.tonalIcon(
                 onPressed: _onPickFromGallery,
                 icon: const Icon(Icons.photo_library_outlined, size: 18),
                 label: const Text('Choose a photo'),
               ),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Frames the live preview to the selected aspect ratio.
+///
+/// The preview is scaled to cover the frame rather than fit inside it, so the
+/// operator sees exactly the region that will survive the crop.
+class _AspectFramedPreview extends StatelessWidget {
+  final CaptureAspectRatio aspect;
+  final Widget child;
+
+  const _AspectFramedPreview({required this.aspect, required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    if (!aspect.cropsFrame) {
+      return SizedBox.expand(
+        child: FittedBox(fit: BoxFit.cover, child: _sized(context)),
+      );
+    }
+
+    return Center(
+      child: AspectRatio(
+        aspectRatio: aspect.ratio!,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(AppTheme.radius),
+          child: FittedBox(fit: BoxFit.cover, child: _sized(context)),
+        ),
+      ),
+    );
+  }
+
+  /// CameraPreview has no intrinsic size inside a FittedBox, so give it one.
+  Widget _sized(BuildContext context) {
+    final size = MediaQuery.sizeOf(context);
+    return SizedBox(width: size.width, height: size.height, child: child);
+  }
+}
+
+/// Floating controls along the top edge.
+class _TopBar extends StatelessWidget {
+  final VoidCallback onSettings;
+  final VoidCallback? onClose;
+  final VoidCallback? onFullScreen;
+
+  const _TopBar({
+    required this.onSettings,
+    this.onClose,
+    this.onFullScreen,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: Alignment.topCenter,
+      child: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Color(0xA6000000), Colors.transparent],
+          ),
+        ),
+        child: SafeArea(
+          bottom: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 6, 6, 20),
+            child: Row(
+              children: [
+                const Text(
+                  'Shelf Monitor',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 17,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: -0.2,
+                  ),
+                ),
+                const Spacer(),
+                if (onFullScreen != null)
+                  _GlassIconButton(
+                    icon: Icons.fullscreen,
+                    tooltip: 'View full screen',
+                    onPressed: onFullScreen!,
+                  ),
+                if (onFullScreen != null) const SizedBox(width: 8),
+                _GlassIconButton(
+                  icon: Icons.tune,
+                  tooltip: 'Analysis settings',
+                  onPressed: onSettings,
+                ),
+                if (onClose != null) ...[
+                  const SizedBox(width: 8),
+                  _GlassIconButton(
+                    icon: Icons.close,
+                    tooltip: 'Discard capture',
+                    onPressed: onClose!,
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Circular translucent button, legible over any scene.
+class _GlassIconButton extends StatelessWidget {
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback onPressed;
+
+  const _GlassIconButton({
+    required this.icon,
+    required this.tooltip,
+    required this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: tooltip,
+      child: Material(
+        color: Colors.black.withValues(alpha: 0.4),
+        shape: const CircleBorder(),
+        child: InkWell(
+          onTap: onPressed,
+          customBorder: const CircleBorder(),
+          child: Padding(
+            padding: const EdgeInsets.all(9),
+            child: Icon(icon, color: Colors.white, size: 21),
           ),
         ),
       ),

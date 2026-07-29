@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
 import '../models/model_option.dart';
+import '../theme/app_theme.dart';
 import 'detection_overlay.dart' show DetectionPalette;
+import 'model_picker.dart';
 
 /// Choices made in the settings sheet.
 class AnalysisSettings {
@@ -42,21 +44,14 @@ class AnalysisSettings {
   }
 }
 
-/// Bottom sheet for choosing the model version and which products to count.
+/// Bottom sheet for choosing the model, threshold and which products to count.
 ///
-/// Both choices matter to the numbers on screen: the model decides what gets
-/// detected at all, and the class filter decides what Share of Shelf is a share
-/// *of*, so they belong together rather than buried in separate menus.
+/// All three change the numbers on screen, so they belong in one place rather
+/// than scattered across separate menus.
 class AnalysisSettingsSheet extends StatefulWidget {
-  /// Model versions offered. Empty when the catalog could not be loaded.
   final List<ModelOption> models;
-
-  /// Every class the project knows about.
   final List<String> availableClasses;
-
   final AnalysisSettings initial;
-
-  /// True while the catalog is still being fetched.
   final bool isLoadingCatalog;
 
   const AnalysisSettingsSheet({
@@ -74,17 +69,9 @@ class AnalysisSettingsSheet extends StatefulWidget {
 class _AnalysisSettingsSheetState extends State<AnalysisSettingsSheet> {
   late AnalysisSettings _settings = widget.initial;
 
-  void _selectModel(String? modelId) {
-    setState(() => _settings = _settings.copyWith(modelId: modelId));
-  }
-
   void _toggleClass(String className, bool selected) {
     final next = Set<String>.from(_settings.selectedClasses);
-    if (selected) {
-      next.add(className);
-    } else {
-      next.remove(className);
-    }
+    selected ? next.add(className) : next.remove(className);
     setState(() => _settings = _settings.copyWith(selectedClasses: next));
   }
 
@@ -98,145 +85,102 @@ class _AnalysisSettingsSheetState extends State<AnalysisSettingsSheet> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    return SafeArea(
-      child: Padding(
-        padding: EdgeInsets.only(
-          left: 20,
-          right: 20,
-          top: 8,
-          bottom: MediaQuery.of(context).viewInsets.bottom + 16,
-        ),
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Center(
-                child: Container(
-                  width: 36,
-                  height: 4,
-                  margin: const EdgeInsets.only(bottom: 16),
-                  decoration: BoxDecoration(
-                    color: theme.dividerColor,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-              ),
-              Text('Analysis settings', style: theme.textTheme.titleMedium),
-              const SizedBox(height: 20),
-
-              Text('Model version', style: theme.textTheme.titleSmall),
-              const SizedBox(height: 6),
-              Text(
-                'Newer versions are trained on more images and usually detect '
-                'more product types.',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
-              const SizedBox(height: 10),
-              _buildModelPicker(theme),
-
-              const SizedBox(height: 24),
-              Row(
+    return DraggableScrollableSheet(
+      initialChildSize: 0.72,
+      minChildSize: 0.45,
+      maxChildSize: 0.95,
+      expand: false,
+      builder: (context, scrollController) {
+        return Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 4, 12, 12),
+              child: Row(
                 children: [
-                  Text('Minimum confidence', style: theme.textTheme.titleSmall),
-                  const Spacer(),
                   Text(
-                    '${(_settings.confidence * 100).round()}%',
-                    style: theme.textTheme.titleSmall,
+                    'Analysis settings',
+                    style: theme.textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: -0.3,
+                    ),
+                  ),
+                  const Spacer(),
+                  IconButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    icon: const Icon(Icons.close),
+                    tooltip: 'Close',
                   ),
                 ],
               ),
-              const SizedBox(height: 4),
-              Text(
-                'Lower this to reveal products the model is less sure about. '
-                'Classes with fewer training images often score below the '
-                'default 40%.',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
-              Slider(
-                value: _settings.confidence,
-                min: 0.05,
-                max: 0.9,
-                divisions: 17,
-                label: '${(_settings.confidence * 100).round()}%',
-                onChanged: (value) => setState(
-                  () => _settings = _settings.copyWith(confidence: value),
-                ),
-              ),
-
-              const SizedBox(height: 12),
-              Row(
+            ),
+            const Divider(height: 1),
+            Expanded(
+              child: ListView(
+                controller: scrollController,
+                padding: const EdgeInsets.fromLTRB(20, 20, 20, 8),
                 children: [
-                  Text('Products', style: theme.textTheme.titleSmall),
-                  const Spacer(),
-                  if (!_settings.showsAllProducts)
-                    TextButton(
-                      onPressed: _selectAllProducts,
-                      child: const Text('All products'),
+                  _SectionHeader(
+                    title: 'Model version',
+                    subtitle: 'Newer versions train on more images. Metrics '
+                        'are mAP@50 — Roboflow’s dashboard headlines the '
+                        'stricter mAP50-95, so numbers there read lower.',
+                  ),
+                  const SizedBox(height: 12),
+                  ModelPicker(
+                    models: widget.models,
+                    selectedModelId: _settings.modelId,
+                    isLoading: widget.isLoadingCatalog,
+                    onSelected: (id) => setState(
+                      () => _settings = _settings.copyWith(modelId: id),
                     ),
+                  ),
+
+                  const SizedBox(height: 28),
+                  _SectionHeader(
+                    title: 'Minimum confidence',
+                    trailing: '${(_settings.confidence * 100).round()}%',
+                    subtitle: 'Lower this to reveal products the model is less '
+                        'sure about. Classes with fewer training images often '
+                        'score below the default 40%.',
+                  ),
+                  Slider(
+                    value: _settings.confidence,
+                    min: 0.05,
+                    max: 0.9,
+                    divisions: 17,
+                    label: '${(_settings.confidence * 100).round()}%',
+                    onChanged: (v) => setState(
+                      () => _settings = _settings.copyWith(confidence: v),
+                    ),
+                  ),
+
+                  const SizedBox(height: 20),
+                  _SectionHeader(
+                    title: 'Products',
+                    subtitle: _settings.showsAllProducts
+                        ? 'Counting every detected product.'
+                        : 'Share of Shelf is calculated across the selected '
+                              'products only.',
+                  ),
+                  const SizedBox(height: 12),
+                  _buildClassChips(theme),
+                  const SizedBox(height: 24),
                 ],
               ),
-              const SizedBox(height: 6),
-              Text(
-                _settings.showsAllProducts
-                    ? 'Counting every detected product.'
-                    : 'Share of Shelf is calculated across the selected '
-                          'products only.',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
+            ),
+            SafeArea(
+              top: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
+                child: FilledButton(
+                  onPressed: () => Navigator.of(context).pop(_settings),
+                  child: const Text('Apply'),
                 ),
               ),
-              const SizedBox(height: 12),
-              _buildClassChips(theme),
-
-              const SizedBox(height: 24),
-              FilledButton(
-                onPressed: () => Navigator.of(context).pop(_settings),
-                child: const Text('Apply'),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildModelPicker(ThemeData theme) {
-    if (widget.isLoadingCatalog) {
-      return const Padding(
-        padding: EdgeInsets.symmetric(vertical: 12),
-        child: LinearProgressIndicator(),
-      );
-    }
-
-    if (widget.models.isEmpty) {
-      return Text(
-        'Model list unavailable — using the configured default.',
-        style: theme.textTheme.bodySmall?.copyWith(
-          color: theme.colorScheme.onSurfaceVariant,
-        ),
-      );
-    }
-
-    return RadioGroup<String>(
-      groupValue: _settings.modelId ?? widget.models.first.modelId,
-      onChanged: _selectModel,
-      child: Column(
-        children: [
-          for (final model in widget.models)
-            RadioListTile<String>(
-              value: model.modelId,
-              title: Text(model.label),
-              subtitle: Text(model.subtitle),
-              dense: true,
-              contentPadding: EdgeInsets.zero,
             ),
-        ],
-      ),
+          ],
+        );
+      },
     );
   }
 
@@ -258,17 +202,89 @@ class _AnalysisSettingsSheetState extends State<AnalysisSettingsSheet> {
           label: const Text('All products'),
           selected: _settings.showsAllProducts,
           onSelected: (_) => _selectAllProducts(),
+          backgroundColor: theme.colorScheme.surfaceContainerHighest
+              .withValues(alpha: 0.4),
+          selectedColor: theme.colorScheme.primary.withValues(alpha: 0.18),
         ),
         for (final className in widget.availableClasses)
           FilterChip(
             label: Text(className),
             selected: _settings.selectedClasses.contains(className),
-            avatar: CircleAvatar(
-              backgroundColor: DetectionPalette.forClass(className),
-              radius: 7,
+            avatar: Container(
+              width: 12,
+              height: 12,
+              decoration: BoxDecoration(
+                color: DetectionPalette.forClass(className),
+                shape: BoxShape.circle,
+              ),
             ),
-            onSelected: (selected) => _toggleClass(className, selected),
+            onSelected: (s) => _toggleClass(className, s),
+            backgroundColor: theme.colorScheme.surfaceContainerHighest
+                .withValues(alpha: 0.4),
+            selectedColor: theme.colorScheme.primary.withValues(alpha: 0.18),
           ),
+      ],
+    );
+  }
+}
+
+/// Consistent section title, optional trailing value, and explanatory line.
+class _SectionHeader extends StatelessWidget {
+  final String title;
+  final String subtitle;
+  final String? trailing;
+
+  const _SectionHeader({
+    required this.title,
+    required this.subtitle,
+    this.trailing,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Text(
+              title,
+              style: theme.textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            if (trailing != null) ...[
+              const Spacer(),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 3,
+                ),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.primary.withValues(alpha: 0.14),
+                  borderRadius: BorderRadius.circular(AppTheme.radiusSmall),
+                ),
+                child: Text(
+                  trailing!,
+                  style: theme.textTheme.labelLarge?.copyWith(
+                    color: theme.colorScheme.primary,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+        const SizedBox(height: 5),
+        Text(
+          subtitle,
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+            height: 1.35,
+          ),
+        ),
       ],
     );
   }

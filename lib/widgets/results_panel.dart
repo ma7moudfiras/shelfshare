@@ -28,6 +28,10 @@ class ResultsPanel extends StatelessWidget {
   /// Confidence threshold the result was produced at, 0.0 - 1.0.
   final double? confidence;
 
+  /// Scroll controller supplied by an enclosing draggable sheet, so dragging
+  /// the content also drags the sheet.
+  final ScrollController? scrollController;
+
   const ResultsPanel({
     super.key,
     this.result,
@@ -36,6 +40,7 @@ class ResultsPanel extends StatelessWidget {
     this.onRetry,
     this.modelId,
     this.confidence,
+    this.scrollController,
   });
 
   @override
@@ -57,7 +62,8 @@ class ResultsPanel extends StatelessWidget {
     if (result.isEmpty) return const _NoDetectionsState();
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
+      controller: scrollController,
+      padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

@@ -9,6 +9,7 @@ import 'package:shelf_monitor/screens/capture_screen.dart';
 import 'package:shelf_monitor/services/detection_service.dart';
 import 'package:shelf_monitor/services/model_catalog_service.dart';
 import 'package:shelf_monitor/models/model_option.dart';
+import 'package:shelf_monitor/widgets/aspect_ratio_selector.dart';
 import 'package:shelf_monitor/widgets/results_panel.dart';
 import 'package:shelf_monitor/widgets/share_of_shelf_panel.dart';
 
@@ -137,7 +138,9 @@ void main() {
   });
 
   group('CaptureScreen', () {
-    testWidgets('builds and shows the results placeholder', (tester) async {
+    testWidgets('opens on a full-bleed viewfinder, not a results panel', (
+      tester,
+    ) async {
       await tester.pumpWidget(
         MaterialApp(
           home: CaptureScreen(
@@ -149,8 +152,13 @@ void main() {
       await tester.pump();
 
       expect(find.text('Shelf Monitor'), findsOneWidget);
-      expect(find.byType(ResultsPanel), findsOneWidget);
-      expect(find.text('No analysis yet'), findsOneWidget);
+      // Framing controls belong on the viewfinder, where framing is decided.
+      expect(find.byType(AspectRatioSelector), findsOneWidget);
+      expect(find.bySemanticsLabel('Capture shelf photo'), findsOneWidget);
+
+      // Results only exist once something has been captured; showing an empty
+      // panel would waste the screen the viewfinder needs.
+      expect(find.byType(ResultsPanel), findsNothing);
     });
   });
 }

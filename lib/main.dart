@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'config/app_config.dart';
 import 'screens/capture_screen.dart';
+import 'theme/app_theme.dart';
 import 'services/detection_service.dart';
 import 'services/roboflow_service.dart';
 
@@ -43,19 +44,14 @@ class _ShelfMonitorAppState extends State<ShelfMonitorApp> {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = ColorScheme.fromSeed(seedColor: const Color(0xFF1E88E5));
-
     return MaterialApp(
       title: 'Shelf Monitor',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(colorScheme: colorScheme, useMaterial3: true),
-      darkTheme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF1E88E5),
-          brightness: Brightness.dark,
-        ),
-        useMaterial3: true,
-      ),
+      theme: AppTheme.light(),
+      darkTheme: AppTheme.dark(),
+      // The capture screen is a viewfinder: it is dark regardless of the
+      // system setting, and the rest of the chrome should match it.
+      themeMode: ThemeMode.dark,
       home: CaptureScreen(detectionService: _detectionService),
     );
   }
