@@ -6,11 +6,13 @@ detected shelf space each brand occupies.
 
 ---
 
+Runs on **Android, iOS, and web** (deployable to Vercel).
+
 ## Requirements
 
 - Flutter **3.44+** (Dart 3.12+)
 - An Android or iOS device — the primary flow uses the live camera, so an
-  emulator without a camera falls back to picking a photo from the gallery
+  emulator or browser without a camera falls back to picking a photo
 - A Roboflow account with access to the `ma7mouds-workspace` workspace
 
 ---
@@ -61,12 +63,76 @@ and the capture is analysed automatically.
 
 ---
 
+## Deploying to Vercel
+
+The app builds to static web and deploys to Vercel, with one important
+difference from the mobile build.
+
+### Why web needs a proxy
+
+`flutter_dotenv` loads `.env` as a Flutter **asset**. On web that means
+`flutter build web` copies it verbatim to `build/web/assets/.env` — a URL any
+visitor can open. **A private Roboflow key in a web build is a published key.**
+
+So the web build ships no key at all. Instead it posts to a same-origin
+serverless function, `api/detect.js`, which holds `ROBOFLOW_API_KEY` as a Vercel
+environment variable and forwards the request to Roboflow. The response is
+relayed unchanged, so the Dart parser is identical in both modes.
+
+```
+mobile   Flutter ──[api_key + image]──────────────► Roboflow
+web      Flutter ──[image only]──► /api/detect ──[+ api_key]──► Roboflow
+```
+
+`AppConfig.usesProxy` picks the mode: always true on web (`kIsWeb`), or whenever
+`ROBOFLOW_PROXY_URL` is set. In proxy mode `RoboflowService` omits `api_key`
+from the body entirely — there is a test asserting exactly that.
+
+### Deploy steps
+
+1. Import the repo at [vercel.com/new](https://vercel.com/new). `vercel.json`
+   supplies the build command and output directory, so no framework preset is
+   needed.
+2. Add the environment variable **`ROBOFLOW_API_KEY`** in
+   *Project → Settings → Environment Variables*. This is the only place the key
+   lives for web. Optionally override `ROBOFLOW_WORKSPACE`,
+   `ROBOFLOW_WORKFLOW_ID`, `ROBOFLOW_BASE_URL`, and `ALLOWED_ORIGIN`.
+3. Deploy. `scripts/vercel-build.sh` fetches the pinned Flutter SDK, writes a
+   **keyless** `.env` placeholder, builds `build/web`, and then runs the leak
+   check below.
+
+### Verifying no key leaked
+
+```bash
+flutter build web --release
+./scripts/check-web-bundle.sh
+```
+
+Fails the build if a Roboflow key is present anywhere in `build/web`. It runs
+automatically as part of the Vercel build. Run it locally too — if your `.env`
+has a real key, a local `flutter build web` **will** bake it into the bundle.
+
+### Camera on web
+
+Browsers expose the camera through `getUserMedia`, which requires **HTTPS**
+(Vercel provides this) and an explicit user permission grant. The
+`Permissions-Policy` header in `vercel.json` allows `camera=(self)`. Where the
+live camera is unavailable — or the user declines — the screen falls back to the
+photo picker, which works in every browser.
+
+---
+
 ## Project structure
 
 Separation of concerns is enforced by layer — widgets never touch HTTP, and the
 UI has no knowledge of Roboflow's response format.
 
 ```
+api/
+└── detect.js                         # Vercel serverless proxy; holds the key server-side
+scripts/
+├── vercel-build.sh                   # Flutter web build for Vercel
+└── check-web-bundle.sh               # Fails if a key leaked into build/web
 lib/
 ├── config/
 │   └── app_config.dart               # Typed access to .env; the only reader of secrets
@@ -224,7 +290,7 @@ flutter analyze
 flutter test
 ```
 
-23 tests, no network and no API key required. The suite covers:
+27 tests, no network and no API key required. The suite covers:
 
 - **Smoke test** (`test/services/roboflow_service_test.dart`) — runs
   `RoboflowService.detectProducts()` over a sample image with the HTTP layer
@@ -233,6 +299,8 @@ flutter test
   parsed correctly.
 - **Request shape** — asserts the outgoing body carries `api_key`, a base64
   `inputs.image`, and parameter names matching the workflow's declared inputs.
+- **Proxy mode** — asserts the request body contains **no** `api_key` and no
+  trace of the key when proxied, and that a proxied response parses identically.
 - **Failure handling** — 401 fails fast, 503 retries to the attempt limit,
   malformed output raises a parse error, missing key raises a config error.
 - **Share of Shelf** — area weighting, ordering, degenerate boxes, fractions
@@ -246,9 +314,9 @@ flutter test
 - **Single images only.** This uses the standard HTTP inference path. Live video
   (webcam / RTSP / file streaming) requires Roboflow's WebRTC path, which is not
   implemented here.
-- **Mobile targets only.** The project is configured for Android and iOS. A web
-  build would ship the private API key to the browser, so it would need the
-  Roboflow call moved behind a server-side proxy first.
+- **Never put a real key in `.env` for a web build.** It becomes a public URL.
+  Web deployments rely on the `/api/detect` proxy; `scripts/check-web-bundle.sh`
+  enforces this.
 - Detection accuracy is bounded by the `aystro-project/1` model, which currently
   knows three classes.
 - Captured images are resized by the camera preset (`ResolutionPreset.high`) and

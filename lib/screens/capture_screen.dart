@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:camera/camera.dart';
@@ -35,8 +34,10 @@ class _CaptureScreenState extends State<CaptureScreen>
   final CameraService _cameraService = CameraService();
 
   /// Bytes of the current capture, held for both display and re-analysis.
+  ///
+  /// Bytes rather than a file path: `dart:io` is unavailable on web, and the
+  /// overlay renders straight from memory anyway.
   Uint8List? _capturedBytes;
-  File? _capturedFile;
 
   DetectionResult? _result;
   bool _isAnalyzing = false;
@@ -92,8 +93,8 @@ class _CaptureScreenState extends State<CaptureScreen>
 
   Future<void> _onCapture() async {
     try {
-      final file = await _cameraService.capture();
-      await _useImage(file);
+      final photo = await _cameraService.capture();
+      await _useImage(photo);
     } on CameraException catch (e) {
       if (!mounted) return;
       setState(() => _errorMessage = e.description ?? 'Capture failed.');
@@ -101,17 +102,16 @@ class _CaptureScreenState extends State<CaptureScreen>
   }
 
   Future<void> _onPickFromGallery() async {
-    final file = await _cameraService.pickFromGallery();
-    if (file != null) await _useImage(file);
+    final photo = await _cameraService.pickFromGallery();
+    if (photo != null) await _useImage(photo);
   }
 
-  /// Loads [file] into the preview, then kicks off analysis.
-  Future<void> _useImage(File file) async {
-    final bytes = await file.readAsBytes();
+  /// Loads [photo] into the preview, then kicks off analysis.
+  Future<void> _useImage(XFile photo) async {
+    final bytes = await photo.readAsBytes();
     if (!mounted) return;
 
     setState(() {
-      _capturedFile = file;
       _capturedBytes = bytes;
       _result = null;
       _errorMessage = null;
@@ -123,11 +123,11 @@ class _CaptureScreenState extends State<CaptureScreen>
   /// Runs the captured photo through the detection service.
   Future<void> _analyze() async {
     final service = widget.detectionService;
-    final file = _capturedFile;
+    final bytes = _capturedBytes;
 
     // No backend wired up yet: leave the panel on its placeholder state rather
     // than showing a spurious error.
-    if (service == null || file == null) return;
+    if (service == null || bytes == null) return;
 
     setState(() {
       _isAnalyzing = true;
@@ -135,7 +135,7 @@ class _CaptureScreenState extends State<CaptureScreen>
     });
 
     try {
-      final result = await service.detectProducts(file);
+      final result = await service.detectProducts(bytes);
       if (!mounted) return;
       setState(() {
         _result = result;
@@ -154,7 +154,6 @@ class _CaptureScreenState extends State<CaptureScreen>
   void _reset() {
     setState(() {
       _capturedBytes = null;
-      _capturedFile = null;
       _result = null;
       _errorMessage = null;
       _isAnalyzing = false;
@@ -235,7 +234,7 @@ class _CaptureScreenState extends State<CaptureScreen>
   }
 
   /// Shown when the camera cannot start -- offers the gallery fallback so the
-  /// app stays usable on emulators and camera-less devices.
+  /// app stays usable on emulators, browsers, and camera-less devices.
   Widget _buildCameraError() {
     final theme = Theme.of(context);
 
@@ -247,20 +246,24 @@ class _CaptureScreenState extends State<CaptureScreen>
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(Icons.no_photography_outlined,
-                  color: Colors.white70, size: 38),
+              const Icon(
+                Icons.no_photography_outlined,
+                color: Colors.white70,
+                size: 38,
+              ),
               const SizedBox(height: 12),
               Text(
                 _cameraError!,
                 textAlign: TextAlign.center,
-                style: theme.textTheme.bodyMedium
-                    ?.copyWith(color: Colors.white70),
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: Colors.white70,
+                ),
               ),
               const SizedBox(height: 16),
               FilledButton.tonalIcon(
                 onPressed: _onPickFromGallery,
                 icon: const Icon(Icons.photo_library_outlined, size: 18),
-                label: const Text('Choose from gallery'),
+                label: const Text('Choose a photo'),
               ),
             ],
           ),

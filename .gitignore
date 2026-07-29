@@ -56,3 +56,8 @@ secrets.json
 # Local tooling
 .fvm/
 .flutter-plugins
+
+# Vercel
+.vercel/
+.flutter-sdk/
+node_modules/

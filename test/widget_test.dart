@@ -1,4 +1,4 @@
-import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -17,7 +17,7 @@ class FakeDetectionService implements DetectionService {
   FakeDetectionService(this.result);
 
   @override
-  Future<DetectionResult> detectProducts(File imageFile) async => result;
+  Future<DetectionResult> detectProducts(Uint8List imageBytes) async => result;
 
   @override
   void dispose() {}

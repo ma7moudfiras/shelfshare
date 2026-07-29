@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
@@ -91,6 +90,13 @@ class RoboflowParameters {
 ///
 /// Images are sent as base64 because captures are local files, not hosted URLs.
 ///
+/// ## Proxy mode
+///
+/// When [useProxy] is set the request goes to a same-origin serverless function
+/// instead, and **`api_key` is omitted** -- the server attaches it. This is what
+/// web builds use, since anything shipped to a browser is publicly readable.
+/// The response shape is identical either way, so parsing is unaffected.
+///
 /// Note: the published workflow includes a `roboflow_dataset_upload` step, so
 /// every successful call also uploads the photo into the `aystro-project`
 /// dataset for active learning. That is the workflow's behaviour, not this
@@ -100,8 +106,11 @@ class RoboflowService implements DetectionService {
   final bool _ownsClient;
   final WorkflowResponseParser _parser;
 
-  /// Endpoint to POST to. Defaults to the one built from `.env`.
+  /// Endpoint to POST to. Defaults to whichever mode [AppConfig] selects.
   final Uri endpoint;
+
+  /// When true, the API key is left to the server and omitted from the body.
+  final bool useProxy;
 
   /// Runtime parameters sent with every request.
   final RoboflowParameters parameters;
@@ -116,6 +125,7 @@ class RoboflowService implements DetectionService {
   RoboflowService({
     http.Client? client,
     Uri? endpoint,
+    bool? useProxy,
     this.parameters = const RoboflowParameters(),
     this.timeout = const Duration(seconds: 45),
     this.maxAttempts = 3,
@@ -126,27 +136,24 @@ class RoboflowService implements DetectionService {
        // named parameters may not begin with an underscore.
        // ignore: prefer_initializing_formals
        _parser = parser,
-       endpoint = endpoint ?? AppConfig.workflowEndpoint;
+       useProxy = useProxy ?? AppConfig.usesProxy,
+       endpoint = endpoint ?? AppConfig.detectionEndpoint;
 
   /// Base delay for exponential backoff between retries: 500ms, then 1s.
   static const Duration _baseBackoff = Duration(milliseconds: 500);
 
   @override
-  Future<DetectionResult> detectProducts(File imageFile) async {
-    if (!await imageFile.exists()) {
-      throw DetectionConfigException(
-        'Captured image no longer exists at ${imageFile.path}',
-      );
+  Future<DetectionResult> detectProducts(Uint8List imageBytes) async {
+    if (imageBytes.isEmpty) {
+      throw const DetectionConfigException('The captured image was empty.');
     }
 
-    // Throws DetectionConfigException when .env is missing or unfilled.
-    final apiKey = AppConfig.roboflowApiKey;
-
-    final bytes = await imageFile.readAsBytes();
     final body = jsonEncode({
-      'api_key': apiKey,
+      // In proxy mode the key stays server-side and is never sent from the
+      // client, so it is not read here at all.
+      if (!useProxy) 'api_key': AppConfig.roboflowApiKey,
       'inputs': {
-        'image': {'type': 'base64', 'value': base64Encode(bytes)},
+        'image': {'type': 'base64', 'value': base64Encode(imageBytes)},
       },
       'parameters': parameters.toJson(),
     });
@@ -197,14 +204,10 @@ class RoboflowService implements DetectionService {
         'Roboflow did not respond within ${timeout.inSeconds}s.',
         cause: e,
       );
-    } on SocketException catch (e) {
-      throw DetectionNetworkException(
-        'Could not reach Roboflow. Check your network connection.',
-        cause: e,
-      );
     } on http.ClientException catch (e) {
+      // Wraps socket failures, DNS errors, and browser CORS/network errors.
       throw DetectionNetworkException(
-        'The request to Roboflow failed.',
+        'Could not reach the detection service. Check your connection.',
         cause: e,
       );
     }
@@ -223,15 +226,19 @@ class RoboflowService implements DetectionService {
     return switch (status) {
       400 => 'Roboflow rejected the request. The workflow parameters may not '
           'match its current definition.',
-      401 || 403 =>
-        'Roboflow rejected the API key. Check ROBOFLOW_API_KEY in your .env.',
-      404 =>
-        'Workflow not found. Check ROBOFLOW_WORKSPACE and ROBOFLOW_WORKFLOW_ID '
-            'in your .env.',
-      413 => 'The captured image was too large for Roboflow to accept.',
+      401 || 403 => useProxy
+          ? 'The detection proxy rejected the request. Check ROBOFLOW_API_KEY '
+                'in the server environment.'
+          : 'Roboflow rejected the API key. Check ROBOFLOW_API_KEY in your '
+                '.env.',
+      404 => useProxy
+          ? 'Detection proxy not found at $endpoint.'
+          : 'Workflow not found. Check ROBOFLOW_WORKSPACE and '
+                'ROBOFLOW_WORKFLOW_ID in your .env.',
+      413 => 'The captured image was too large to accept.',
       429 => 'Roboflow rate limit reached. Try again in a moment.',
-      _ when status >= 500 => 'Roboflow had a server error ($status).',
-      _ => 'Roboflow returned an unexpected status ($status).',
+      _ when status >= 500 => 'The detection service had an error ($status).',
+      _ => 'The detection service returned an unexpected status ($status).',
     };
   }
 
