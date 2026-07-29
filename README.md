@@ -230,10 +230,35 @@ Content-Type: application/json
 
 {
   "api_key": "<from .env>",
-  "inputs": { "image": { "type": "base64", "value": "<jpeg bytes>" } },
-  "parameters": { "confidence": 0.4, "iou_threshold": 0.3, ... }
+  "inputs": {
+    "image": { "type": "base64", "value": "<jpeg bytes>" },
+    // WorkflowParameter values go HERE, not in a sibling object.
+    "confidence": 0.4,
+    "iou_threshold": 0.3,
+    "class_agnostic_nms": false,
+    "max_detections": 1000,
+    "model_id": "aystro-project/11"
+  }
 }
 ```
+
+> **Parameters must be nested inside `inputs`.** The Workflows REST API has no
+> top-level `parameters` field. Sending one is **silently discarded** — no
+> error, no warning — and the workflow then runs every declared default.
+>
+> This is unusually hard to notice: with default values an ignored block and an
+> honoured one produce identical output. It only surfaces when a non-default
+> value fails to take effect. To check, send a deliberately absurd value:
+>
+> ```bash
+> # If parameters are honoured this returns zero detections.
+> curl -sS -X POST https://<deployment>/api/detect \
+>   -H 'Content-Type: application/json' \
+>   -d '{"inputs":{"image":{"type":"base64","value":"..."}},
+>        "parameters":{"confidence":0.99}}'
+> ```
+>
+> A nonexistent `model_id` returning an ordinary result is the same tell.
 
 Each call has a **45s timeout** and **up to 3 attempts** with exponential
 backoff (500ms, 1s). Only retryable failures are repeated — a `401` from a bad
