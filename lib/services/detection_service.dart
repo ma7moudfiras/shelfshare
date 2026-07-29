@@ -16,11 +16,16 @@ abstract interface class DetectionService {
   /// [modelId] overrides the configured model version for this call, e.g.
   /// `aystro-project/11`. Null uses whatever the implementation defaults to.
   ///
+  /// [confidence] overrides the minimum score a detection must reach, in the
+  /// range 0.0 - 1.0. Lowering it surfaces weaker detections, which is what
+  /// makes under-represented classes appear.
+  ///
   /// Throws a [DetectionException] subclass on failure; implementations should
   /// not return a partially-populated result to signal an error.
   Future<DetectionResult> detectProducts(
     Uint8List imageBytes, {
     String? modelId,
+    double? confidence,
   });
 
   /// Releases any resources held by the implementation, e.g. an HTTP client.

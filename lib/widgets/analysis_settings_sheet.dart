@@ -11,18 +11,33 @@ class AnalysisSettings {
   /// Classes to keep. Empty means all products.
   final Set<String> selectedClasses;
 
-  const AnalysisSettings({this.modelId, this.selectedClasses = const {}});
+  /// Minimum score a detection must reach, 0.0 - 1.0.
+  ///
+  /// The workflow's own default is 0.4, which is high enough to hide
+  /// under-represented classes entirely. Exposing it is what lets a shelf with
+  /// several products stop reporting only the strongest one.
+  final double confidence;
+
+  const AnalysisSettings({
+    this.modelId,
+    this.selectedClasses = const {},
+    this.confidence = defaultConfidence,
+  });
+
+  static const double defaultConfidence = 0.4;
 
   bool get showsAllProducts => selectedClasses.isEmpty;
 
   AnalysisSettings copyWith({
     String? modelId,
     Set<String>? selectedClasses,
+    double? confidence,
     bool clearModel = false,
   }) {
     return AnalysisSettings(
       modelId: clearModel ? null : (modelId ?? this.modelId),
       selectedClasses: selectedClasses ?? this.selectedClasses,
+      confidence: confidence ?? this.confidence,
     );
   }
 }
@@ -123,6 +138,37 @@ class _AnalysisSettingsSheetState extends State<AnalysisSettingsSheet> {
               _buildModelPicker(theme),
 
               const SizedBox(height: 24),
+              Row(
+                children: [
+                  Text('Minimum confidence', style: theme.textTheme.titleSmall),
+                  const Spacer(),
+                  Text(
+                    '${(_settings.confidence * 100).round()}%',
+                    style: theme.textTheme.titleSmall,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Lower this to reveal products the model is less sure about. '
+                'Classes with fewer training images often score below the '
+                'default 40%.',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+              Slider(
+                value: _settings.confidence,
+                min: 0.05,
+                max: 0.9,
+                divisions: 17,
+                label: '${(_settings.confidence * 100).round()}%',
+                onChanged: (value) => setState(
+                  () => _settings = _settings.copyWith(confidence: value),
+                ),
+              ),
+
+              const SizedBox(height: 12),
               Row(
                 children: [
                   Text('Products', style: theme.textTheme.titleSmall),

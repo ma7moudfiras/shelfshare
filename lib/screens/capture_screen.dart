@@ -193,8 +193,16 @@ class _CaptureScreenState extends State<CaptureScreen>
     final bytes = await photo.readAsBytes();
     if (!mounted) return;
 
+    // Release the camera while the still is on screen. Holding a live stream
+    // that nothing is displaying is wasteful everywhere, and on iOS Safari it
+    // is actively harmful: the suspended stream cannot be resumed, so the
+    // preview would come back black. Reacquiring on retake is the only
+    // reliable route to a live preview there.
+    _cameraService.dispose();
+
     setState(() {
       _capturedBytes = bytes;
+      _isCameraReady = false;
       _result = null;
       _errorMessage = null;
     });
@@ -220,6 +228,7 @@ class _CaptureScreenState extends State<CaptureScreen>
       final result = await service.detectProducts(
         bytes,
         modelId: _settings.modelId,
+        confidence: _settings.confidence,
       );
       if (!mounted) return;
       setState(() {
@@ -243,6 +252,7 @@ class _CaptureScreenState extends State<CaptureScreen>
   /// this workflow, upload the photo to the dataset again.
   Future<void> _openSettings() async {
     final previousModel = _settings.modelId;
+    final previousConfidence = _settings.confidence;
 
     final updated = await showModalBottomSheet<AnalysisSettings>(
       context: context,
@@ -259,7 +269,10 @@ class _CaptureScreenState extends State<CaptureScreen>
 
     setState(() => _settings = updated);
 
-    if (updated.modelId != previousModel && _capturedBytes != null) {
+    final needsReanalysis =
+        updated.modelId != previousModel ||
+        updated.confidence != previousConfidence;
+    if (needsReanalysis && _capturedBytes != null) {
       await _analyze();
     }
   }
@@ -293,7 +306,10 @@ class _CaptureScreenState extends State<CaptureScreen>
       _isAnalyzing = false;
     });
 
-    if (!_isCameraReady) _initializeCamera();
+    // Unconditional: on iOS Safari the controller can still report ready while
+    // its underlying stream is dead, so trusting the flag leaves a black
+    // preview that only a page refresh clears.
+    _initializeCamera();
   }
 
   @override
@@ -335,6 +351,8 @@ class _CaptureScreenState extends State<CaptureScreen>
               isLoading: _isAnalyzing,
               errorMessage: _errorMessage,
               onRetry: _analyze,
+              modelId: _settings.modelId,
+              confidence: _settings.confidence,
             ),
           ),
         ],

@@ -22,12 +22,20 @@ class ResultsPanel extends StatelessWidget {
   /// Invoked when the user taps Retry on the error state.
   final VoidCallback? onRetry;
 
+  /// Model that produced [result], e.g. `aystro-project/11`.
+  final String? modelId;
+
+  /// Confidence threshold the result was produced at, 0.0 - 1.0.
+  final double? confidence;
+
   const ResultsPanel({
     super.key,
     this.result,
     this.isLoading = false,
     this.errorMessage,
     this.onRetry,
+    this.modelId,
+    this.confidence,
   });
 
   @override
@@ -50,7 +58,18 @@ class ResultsPanel extends StatelessWidget {
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
-      child: ShareOfShelfPanel(shareOfShelf: result.shareOfShelf),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ShareOfShelfPanel(shareOfShelf: result.shareOfShelf),
+          const SizedBox(height: 14),
+          _RunCaption(
+            modelId: modelId,
+            confidence: confidence,
+            detectionCount: result.count,
+          ),
+        ],
+      ),
     );
   }
 }
@@ -148,6 +167,40 @@ class _ErrorState extends StatelessWidget {
             ],
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// States what produced the numbers above.
+///
+/// Makes the model and threshold visible, which is the difference between
+/// "the app is broken" and "this threshold hid the weaker detections".
+class _RunCaption extends StatelessWidget {
+  final String? modelId;
+  final double? confidence;
+  final int detectionCount;
+
+  const _RunCaption({
+    this.modelId,
+    this.confidence,
+    required this.detectionCount,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    final parts = <String>[
+      ?modelId,
+      if (confidence != null) '≥${(confidence! * 100).round()}% confidence',
+      '$detectionCount detected',
+    ];
+
+    return Text(
+      parts.join('  ·  '),
+      style: theme.textTheme.bodySmall?.copyWith(
+        color: theme.colorScheme.onSurfaceVariant,
       ),
     );
   }

@@ -67,6 +67,10 @@ class FakeCameraService implements CameraService {
     disposeCalls++;
     _ready = false;
   }
+
+  /// Simulates iOS Safari, where the controller reports ready while its
+  /// underlying media stream is already dead.
+  void forceReady(bool value) => _ready = value;
 }
 
 /// Catalog stand-in so the screen makes no network call under test.
@@ -93,6 +97,7 @@ class StubDetectionService implements DetectionService {
   Future<DetectionResult> detectProducts(
     Uint8List imageBytes, {
     String? modelId,
+    double? confidence,
   }) async =>
       DetectionResult.empty(imageWidth: 100, imageHeight: 100);
 
@@ -204,6 +209,53 @@ void main() {
         reason: 'Retake must restart a released preview',
       );
       expect(camera.isReady, isTrue);
+    });
+  });
+
+  group('iOS Safari preview recovery', () {
+    // Regression: on iOS Safari a suspended camera stream cannot be resumed.
+    // The controller kept reporting ready while its <video> element was dead,
+    // so the preview came back black -- no spinner, and only a page refresh
+    // cleared it. Releasing on capture and unconditionally reacquiring on
+    // retake forces a fresh getUserMedia.
+    testWidgets('releases the camera while a still is displayed', (
+      tester,
+    ) async {
+      final camera = await pumpScreen(tester);
+      expect(camera.isReady, isTrue);
+
+      await tester.tap(find.bySemanticsLabel('Capture shelf photo'));
+      await settle(tester);
+
+      expect(camera.disposeCalls, greaterThan(0));
+      expect(
+        camera.isReady,
+        isFalse,
+        reason: 'holding a stream nothing displays is what strands iOS Safari',
+      );
+    });
+
+    testWidgets('retake reacquires even when the camera still reports ready', (
+      tester,
+    ) async {
+      final camera = await pumpScreen(tester);
+
+      await tester.tap(find.bySemanticsLabel('Capture shelf photo'));
+      await settle(tester);
+      final afterCapture = camera.initializeCalls;
+
+      // Simulate the iOS case: the service claims to be ready while its stream
+      // is actually dead. Retake must not trust that flag.
+      camera.forceReady(true);
+
+      await tester.tap(find.text('Retake'));
+      await settle(tester);
+
+      expect(
+        camera.initializeCalls,
+        greaterThan(afterCapture),
+        reason: 'retake must restart the stream regardless of the ready flag',
+      );
     });
   });
 

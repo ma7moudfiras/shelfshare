@@ -56,7 +56,10 @@ class ModelOption {
   String get subtitle {
     final parts = <String>[
       if (images != null) '$images images',
-      if (map50 != null) 'mAP ${map50!.toStringAsFixed(0)}%',
+      // Labelled precisely: Roboflow's UI headline is mAP50-95, which is
+      // stricter and reads much lower than this figure. Calling both "mAP"
+      // makes the app look wrong when it is simply reporting a different one.
+      if (map50 != null) 'mAP@50 ${map50!.toStringAsFixed(0)}%',
       if (recall != null) 'recall ${recall!.toStringAsFixed(0)}%',
     ];
     return parts.isEmpty ? name : parts.join(' · ');

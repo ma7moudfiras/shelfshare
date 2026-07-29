@@ -160,16 +160,18 @@ class RoboflowService implements DetectionService {
   Future<DetectionResult> detectProducts(
     Uint8List imageBytes, {
     String? modelId,
+    double? confidence,
   }) async {
     if (imageBytes.isEmpty) {
       throw const DetectionConfigException('The captured image was empty.');
     }
 
-    // A per-call model overrides the configured one, which is what the in-app
-    // model picker uses.
-    final parameters = modelId == null
-        ? this.parameters
-        : this.parameters.copyWith(modelId: modelId);
+    // Per-call overrides from the settings sheet win over the configured
+    // defaults, so the picker and confidence slider take effect immediately.
+    final parameters = this.parameters.copyWith(
+      modelId: modelId,
+      confidence: confidence,
+    );
 
     final body = jsonEncode({
       // In proxy mode the key stays server-side and is never sent from the

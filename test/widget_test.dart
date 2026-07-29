@@ -22,6 +22,7 @@ class FakeDetectionService implements DetectionService {
   Future<DetectionResult> detectProducts(
     Uint8List imageBytes, {
     String? modelId,
+    double? confidence,
   }) async => result;
 
   @override
