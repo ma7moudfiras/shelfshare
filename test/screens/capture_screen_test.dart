@@ -8,6 +8,8 @@ import 'package:shelf_monitor/models/detection_result.dart';
 import 'package:shelf_monitor/screens/capture_screen.dart';
 import 'package:shelf_monitor/services/camera_service.dart';
 import 'package:shelf_monitor/services/detection_service.dart';
+import 'package:shelf_monitor/services/model_catalog_service.dart';
+import 'package:shelf_monitor/models/model_option.dart';
 
 /// A decodable JPEG for tests that put a captured still on screen.
 Uint8List sampleJpegBytes() =>
@@ -67,9 +69,31 @@ class FakeCameraService implements CameraService {
   }
 }
 
+/// Catalog stand-in so the screen makes no network call under test.
+class FakeCatalogService implements ModelCatalogService {
+  final ModelCatalog catalog;
+
+  FakeCatalogService([this.catalog = const ModelCatalog.empty()]);
+
+  @override
+  Future<ModelCatalog> fetchCatalog() async => catalog;
+
+  @override
+  Uri get endpoint => Uri.parse('https://example.test/api/models');
+
+  @override
+  Duration get timeout => const Duration(seconds: 1);
+
+  @override
+  void dispose() {}
+}
+
 class StubDetectionService implements DetectionService {
   @override
-  Future<DetectionResult> detectProducts(Uint8List imageBytes) async =>
+  Future<DetectionResult> detectProducts(
+    Uint8List imageBytes, {
+    String? modelId,
+  }) async =>
       DetectionResult.empty(imageWidth: 100, imageHeight: 100);
 
   @override
@@ -96,6 +120,7 @@ void main() {
         home: CaptureScreen(
           cameraService: camera,
           detectionService: StubDetectionService(),
+          catalogService: FakeCatalogService(),
         ),
       ),
     );
@@ -192,6 +217,7 @@ void main() {
           home: CaptureScreen(
             cameraService: camera,
             detectionService: StubDetectionService(),
+            catalogService: FakeCatalogService(),
           ),
         ),
       );

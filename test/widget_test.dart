@@ -7,6 +7,8 @@ import 'package:shelf_monitor/models/detection.dart';
 import 'package:shelf_monitor/models/detection_result.dart';
 import 'package:shelf_monitor/screens/capture_screen.dart';
 import 'package:shelf_monitor/services/detection_service.dart';
+import 'package:shelf_monitor/services/model_catalog_service.dart';
+import 'package:shelf_monitor/models/model_option.dart';
 import 'package:shelf_monitor/widgets/results_panel.dart';
 import 'package:shelf_monitor/widgets/share_of_shelf_panel.dart';
 
@@ -17,7 +19,25 @@ class FakeDetectionService implements DetectionService {
   FakeDetectionService(this.result);
 
   @override
-  Future<DetectionResult> detectProducts(Uint8List imageBytes) async => result;
+  Future<DetectionResult> detectProducts(
+    Uint8List imageBytes, {
+    String? modelId,
+  }) async => result;
+
+  @override
+  void dispose() {}
+}
+
+/// Keeps the screen off the network under test.
+class FakeCatalogService implements ModelCatalogService {
+  @override
+  Future<ModelCatalog> fetchCatalog() async => const ModelCatalog.empty();
+
+  @override
+  Uri get endpoint => Uri.parse('https://example.test/api/models');
+
+  @override
+  Duration get timeout => const Duration(seconds: 1);
 
   @override
   void dispose() {}
@@ -121,6 +141,7 @@ void main() {
         MaterialApp(
           home: CaptureScreen(
             detectionService: FakeDetectionService(resultWith([])),
+            catalogService: FakeCatalogService(),
           ),
         ),
       );

@@ -157,10 +157,19 @@ class RoboflowService implements DetectionService {
   static const Duration _baseBackoff = Duration(milliseconds: 500);
 
   @override
-  Future<DetectionResult> detectProducts(Uint8List imageBytes) async {
+  Future<DetectionResult> detectProducts(
+    Uint8List imageBytes, {
+    String? modelId,
+  }) async {
     if (imageBytes.isEmpty) {
       throw const DetectionConfigException('The captured image was empty.');
     }
+
+    // A per-call model overrides the configured one, which is what the in-app
+    // model picker uses.
+    final parameters = modelId == null
+        ? this.parameters
+        : this.parameters.copyWith(modelId: modelId);
 
     final body = jsonEncode({
       // In proxy mode the key stays server-side and is never sent from the

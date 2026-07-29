@@ -73,11 +73,29 @@ class DetectionResult {
   ShareOfShelf? _shareOfShelf;
 
   /// Returns a copy keeping only detections at or above [minConfidence].
-  DetectionResult filterByConfidence(double minConfidence) {
+  DetectionResult filterByConfidence(double minConfidence) =>
+      _copyWithDetections(
+        detections.where((d) => d.confidence >= minConfidence).toList(),
+      );
+
+  /// Returns a copy keeping only detections whose class is in [classNames].
+  ///
+  /// A null or empty selection means "all products" and returns this result
+  /// unchanged -- filtering to nothing would silently blank the screen, which
+  /// is never what selecting no filter should mean.
+  ///
+  /// Share of Shelf is recomputed from the filtered set, so narrowing to two
+  /// brands reports their split of *those two* rather than of everything.
+  DetectionResult filterByClasses(Set<String>? classNames) {
+    if (classNames == null || classNames.isEmpty) return this;
+    return _copyWithDetections(
+      detections.where((d) => classNames.contains(d.className)).toList(),
+    );
+  }
+
+  DetectionResult _copyWithDetections(List<Detection> filtered) {
     return DetectionResult(
-      detections: detections
-          .where((d) => d.confidence >= minConfidence)
-          .toList(),
+      detections: filtered,
       imageWidth: imageWidth,
       imageHeight: imageHeight,
       annotatedImage: annotatedImage,

@@ -4,9 +4,12 @@ import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 
 import '../models/detection_result.dart';
+import '../models/model_option.dart';
 import '../services/camera_service.dart';
+import '../services/model_catalog_service.dart';
 import '../services/detection_exception.dart';
 import '../services/detection_service.dart';
+import '../widgets/analysis_settings_sheet.dart';
 import '../widgets/capture_controls.dart';
 import '../widgets/detection_overlay.dart';
 import '../widgets/results_panel.dart';
@@ -27,7 +30,16 @@ class CaptureScreen extends StatefulWidget {
   /// lifecycle flows without a real device camera.
   final CameraService? cameraService;
 
-  const CaptureScreen({super.key, this.detectionService, this.cameraService});
+  /// Supplies the model/class lists for the settings sheet. Injectable so
+  /// tests can provide a catalog without network access.
+  final ModelCatalogService? catalogService;
+
+  const CaptureScreen({
+    super.key,
+    this.detectionService,
+    this.cameraService,
+    this.catalogService,
+  });
 
   @override
   State<CaptureScreen> createState() => _CaptureScreenState();
@@ -54,17 +66,42 @@ class _CaptureScreenState extends State<CaptureScreen>
   /// Guards against overlapping [_initializeCamera] calls.
   bool _isInitializingCamera = false;
 
+  late final ModelCatalogService _catalogService =
+      widget.catalogService ?? ModelCatalogService();
+
+  ModelCatalog _catalog = const ModelCatalog.empty();
+  bool _isLoadingCatalog = false;
+
+  /// Chosen model version and product filter.
+  AnalysisSettings _settings = const AnalysisSettings();
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _initializeCamera();
+    _loadCatalog();
+  }
+
+  /// Loads the model and class lists in the background.
+  ///
+  /// Failure is silent by design: the catalog only powers the settings sheet,
+  /// so losing it must not block capture or analysis.
+  Future<void> _loadCatalog() async {
+    setState(() => _isLoadingCatalog = true);
+    final catalog = await _catalogService.fetchCatalog();
+    if (!mounted) return;
+    setState(() {
+      _catalog = catalog;
+      _isLoadingCatalog = false;
+    });
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _cameraService.dispose();
+    _catalogService.dispose();
     super.dispose();
   }
 
@@ -180,7 +217,10 @@ class _CaptureScreenState extends State<CaptureScreen>
     });
 
     try {
-      final result = await service.detectProducts(bytes);
+      final result = await service.detectProducts(
+        bytes,
+        modelId: _settings.modelId,
+      );
       if (!mounted) return;
       setState(() {
         _result = result;
@@ -194,6 +234,50 @@ class _CaptureScreenState extends State<CaptureScreen>
       });
     }
   }
+
+  /// Opens the settings sheet and applies whatever comes back.
+  ///
+  /// Changing the model re-runs detection, since a different model produces
+  /// different boxes. Changing only the product filter does not: that is a
+  /// view over the existing result, so re-running would waste a call and, on
+  /// this workflow, upload the photo to the dataset again.
+  Future<void> _openSettings() async {
+    final previousModel = _settings.modelId;
+
+    final updated = await showModalBottomSheet<AnalysisSettings>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: false,
+      builder: (_) => AnalysisSettingsSheet(
+        models: _catalog.models,
+        availableClasses: _classChoices,
+        initial: _settings,
+        isLoadingCatalog: _isLoadingCatalog,
+      ),
+    );
+    if (updated == null || !mounted) return;
+
+    setState(() => _settings = updated);
+
+    if (updated.modelId != previousModel && _capturedBytes != null) {
+      await _analyze();
+    }
+  }
+
+  /// Classes offered in the filter.
+  ///
+  /// Prefers the project's full class list so products can be selected before
+  /// they are ever detected; falls back to whatever the current result
+  /// contains when the catalog is unavailable.
+  List<String> get _classChoices {
+    if (_catalog.classes.isNotEmpty) return _catalog.classes;
+    final fromResult = _result?.classNames ?? const <String>[];
+    return List<String>.from(fromResult)..sort();
+  }
+
+  /// The result as shown: narrowed to the selected products.
+  DetectionResult? get _visibleResult =>
+      _result?.filterByClasses(_settings.selectedClasses);
 
   /// Clears the capture and returns to the live preview.
   ///
@@ -220,6 +304,11 @@ class _CaptureScreenState extends State<CaptureScreen>
       appBar: AppBar(
         title: const Text('Shelf Monitor'),
         actions: [
+          IconButton(
+            onPressed: _openSettings,
+            icon: const Icon(Icons.tune),
+            tooltip: 'Analysis settings',
+          ),
           if (hasCapture)
             IconButton(
               onPressed: _reset,
@@ -242,7 +331,7 @@ class _CaptureScreenState extends State<CaptureScreen>
           Expanded(
             flex: 2,
             child: ResultsPanel(
-              result: _result,
+              result: _visibleResult,
               isLoading: _isAnalyzing,
               errorMessage: _errorMessage,
               onRetry: _analyze,
@@ -260,7 +349,7 @@ class _CaptureScreenState extends State<CaptureScreen>
     if (bytes != null) {
       return ColoredBox(
         color: Colors.black,
-        child: DetectionOverlay(imageBytes: bytes, result: _result),
+        child: DetectionOverlay(imageBytes: bytes, result: _visibleResult),
       );
     }
 

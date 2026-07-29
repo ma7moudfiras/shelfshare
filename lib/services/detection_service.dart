@@ -13,9 +13,15 @@ import '../models/detection_result.dart';
 abstract interface class DetectionService {
   /// Runs product detection over the encoded image in [imageBytes].
   ///
+  /// [modelId] overrides the configured model version for this call, e.g.
+  /// `aystro-project/11`. Null uses whatever the implementation defaults to.
+  ///
   /// Throws a [DetectionException] subclass on failure; implementations should
   /// not return a partially-populated result to signal an error.
-  Future<DetectionResult> detectProducts(Uint8List imageBytes);
+  Future<DetectionResult> detectProducts(
+    Uint8List imageBytes, {
+    String? modelId,
+  });
 
   /// Releases any resources held by the implementation, e.g. an HTTP client.
   void dispose();
