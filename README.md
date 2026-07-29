@@ -97,9 +97,39 @@ from the body entirely — there is a test asserting exactly that.
    *Project → Settings → Environment Variables*. This is the only place the key
    lives for web. Optionally override `ROBOFLOW_WORKSPACE`,
    `ROBOFLOW_WORKFLOW_ID`, `ROBOFLOW_BASE_URL`, and `ALLOWED_ORIGIN`.
+
+   > **Check the variable's name character by character.** A typo here produces
+   > `500 {"message": "Detection is not configured."}` — the same error as a
+   > missing key, with nothing to distinguish them. This deployment was broken
+   > for a while by `ROBOFLOW_API_KE` (missing the trailing `Y`).
+   >
+   > `api/detect.js` resolves the key from `API_KEY_NAMES`, which currently
+   > carries that misspelling as a compatibility alias. Once the variable is
+   > renamed to the canonical spelling, drop the alias.
+
+   > **Environment variables are snapshotted when a deployment is created.**
+   > Adding or changing one does not affect deployments that already exist —
+   > redeploy afterwards, or the running function keeps the old (or absent)
+   > value.
 3. Deploy. `scripts/vercel-build.sh` fetches the pinned Flutter SDK, writes a
    **keyless** `.env` placeholder, builds `build/web`, and then runs the leak
    check below.
+
+### Diagnosing a 500 from `/api/detect`
+
+The function checks the key *before* validating the body, so a request with an
+empty JSON body separates the two failure modes without running inference or
+touching your dataset:
+
+```bash
+curl -sS -X POST https://<your-deployment>/api/detect \
+  -H 'Content-Type: application/json' -d '{}'
+```
+
+- `500 {"message":"Detection is not configured."}` → the key is not reaching the
+  function: wrong name, empty value, or a deployment created before it was added.
+- `400 {"message":"Expected inputs.image ..."}` → the key resolved fine; the
+  problem is elsewhere.
 
 ### Verifying no key leaked
 
