@@ -1,0 +1,23 @@
+{
+  "outputs": [
+    {
+      "predictions": {
+        "image": { "width": 720, "height": 540 },
+        "predictions": [
+          {
+            "width": 48.0,
+            "height": 140.0,
+            "x": 624.0,
+            "y": 70.0,
+            "confidence": 0.44803252816200256,
+            "class_id": 0,
+            "class": "coca-cola",
+            "detection_id": "46487882-a7c3-4cca-ac37-b922465a2b45",
+            "parent_id": "image"
+          }
+        ]
+      }
+    }
+  ],
+  "profiler_trace": []
+}
