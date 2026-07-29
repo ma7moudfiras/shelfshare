@@ -1,0 +1,9 @@
+{
+  "name": "shelf-monitor-api",
+  "private": true,
+  "type": "module",
+  "description": "Serverless functions for Shelf Monitor. The Flutter app itself is built by scripts/vercel-build.sh; this file exists only so api/*.js is treated as ESM rather than transpiled to CommonJS.",
+  "engines": {
+    "node": ">=20"
+  }
+}
