@@ -34,26 +34,23 @@ function toNumber(value) {
   return Number.isFinite(n) ? n : null;
 }
 
+/** Extracts the trailing version number from a "workspace/project/11" id. */
+function versionNumberOf(version) {
+  return toNumber(String(version?.id ?? '').split('/').pop());
+}
+
 /**
- * Normalises one entry from the Roboflow versions array.
+ * Normalises one version into a picker entry.
  *
- * Returns null for versions with no trained model -- those cannot be run, so
- * offering them in a picker would only produce failures.
+ * [detail] is the per-version document, which is where `model` actually lives.
+ * The project-level listing omits it, so trained-ness cannot be determined
+ * from the summary alone.
  */
-function toModel(version, project) {
-  // Version ids look like "workspace/project/11"; the trailing segment is the
-  // version number, which is what model_id needs.
-  const id = String(version?.id ?? '');
-  const number = toNumber(id.split('/').pop());
+function toModel(version, detail, project) {
+  const number = versionNumberOf(version);
   if (number === null) return null;
 
-  // A version is runnable once it has a trained model attached. The field has
-  // varied across API revisions, so accept any of the known spellings.
-  const model = version?.model ?? version?.models ?? null;
-  const hasModel =
-    model != null && (Array.isArray(model) ? model.length > 0 : true);
-  if (!hasModel) return null;
-
+  const model = detail?.version?.model ?? detail?.model ?? null;
   const metrics = Array.isArray(model) ? (model[0] ?? {}) : model;
 
   return {
@@ -61,10 +58,31 @@ function toModel(version, project) {
     version: number,
     name: version?.name ?? `Version ${number}`,
     images: toNumber(version?.images),
+    // Roboflow nests headline metrics under `model.map` / `model.recall`.
     map50: toNumber(metrics?.map ?? metrics?.map50),
     precision: toNumber(metrics?.precision),
     recall: toNumber(metrics?.recall),
+    trained: model != null,
   };
+}
+
+/**
+ * Fetches one version's document, returning null on any failure.
+ *
+ * Failures are per-version and non-fatal: one unreachable version should
+ * degrade that entry, not empty the whole picker.
+ */
+async function fetchVersionDetail(apiBase, workspace, project, number, apiKey, signal) {
+  try {
+    const url =
+      `${apiBase}/${workspace}/${project}/${number}` +
+      `?api_key=${encodeURIComponent(apiKey)}`;
+    const res = await fetch(url, { signal });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
 }
 
 export default async function handler(req, res) {
@@ -104,12 +122,37 @@ export default async function handler(req, res) {
     }
 
     const data = JSON.parse(text);
+    const versions = Array.isArray(data?.versions) ? data.versions : [];
 
-    const models = (data?.versions ?? [])
-      .map((v) => toModel(v, project))
+    // Trained-ness and metrics only appear on the per-version document, so
+    // fetch them in parallel. These are small requests and the list is short.
+    const details = await Promise.all(
+      versions.map((v) => {
+        const number = versionNumberOf(v);
+        return number === null
+          ? Promise.resolve(null)
+          : fetchVersionDetail(
+              apiBase,
+              workspace,
+              project,
+              number,
+              apiKey,
+              controller.signal,
+            );
+      }),
+    );
+
+    const all = versions
+      .map((v, i) => toModel(v, details[i], project))
       .filter(Boolean)
       // Newest first: the most recently trained model is the usual choice.
       .sort((a, b) => b.version - a.version);
+
+    // Prefer versions with a trained model. If enrichment failed wholesale --
+    // an API change, or every detail request timing out -- fall back to
+    // offering every version rather than an empty picker.
+    const trained = all.filter((m) => m.trained);
+    const models = trained.length > 0 ? trained : all;
 
     // `classes` is a map of name -> annotation count.
     const classCounts = data?.project?.classes ?? {};
