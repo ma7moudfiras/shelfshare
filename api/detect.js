@@ -25,8 +25,40 @@ const DEFAULTS = {
   baseUrl: 'https://serverless.roboflow.com',
 };
 
+/**
+ * Environment variable names accepted for the Roboflow key, canonical first.
+ *
+ * `ROBOFLOW_API_KE` is a misspelling that exists in a real deployment. Reading
+ * it as a fallback keeps a working deployment working instead of failing on a
+ * one-character typo, and the warning below makes the drift visible rather than
+ * silent. Rename the variable to the canonical spelling and this alias can go.
+ */
+const API_KEY_NAMES = ['ROBOFLOW_API_KEY', 'ROBOFLOW_API_KE'];
+
 /** Upper bound on the request body. Base64 inflates bytes by ~33%. */
 const MAX_BODY_BYTES = 12 * 1024 * 1024;
+
+/**
+ * Returns the configured Roboflow key, or null when none is set.
+ *
+ * Values are trimmed: a trailing newline or space pasted into a dashboard field
+ * would otherwise produce a confusing 401 from Roboflow.
+ */
+function readApiKey() {
+  for (const name of API_KEY_NAMES) {
+    const value = process.env[name];
+    if (typeof value === 'string' && value.trim().length > 0) {
+      if (name !== API_KEY_NAMES[0]) {
+        console.warn(
+          `Roboflow key found under "${name}". Rename it to ` +
+            `"${API_KEY_NAMES[0]}" -- the alias is a compatibility shim.`,
+        );
+      }
+      return value.trim();
+    }
+  }
+  return null;
+}
 
 /** Roboflow cold starts can be slow; keep this under Vercel's function limit. */
 const UPSTREAM_TIMEOUT_MS = 45_000;
@@ -54,10 +86,12 @@ export default async function handler(req, res) {
     return res.status(405).json({ message: 'Method not allowed. Use POST.' });
   }
 
-  const apiKey = process.env.ROBOFLOW_API_KEY;
+  const apiKey = readApiKey();
   if (!apiKey) {
     // Deliberately vague to the client; the detail goes to the server log.
-    console.error('ROBOFLOW_API_KEY is not set in the environment.');
+    console.error(
+      `No Roboflow key in the environment. Looked for: ${API_KEY_NAMES.join(', ')}`,
+    );
     return res.status(500).json({ message: 'Detection is not configured.' });
   }
 
