@@ -9,6 +9,7 @@ import 'package:shelf_monitor/screens/capture_screen.dart';
 import 'package:shelf_monitor/services/camera_service.dart';
 import 'package:shelf_monitor/services/detection_service.dart';
 import 'package:shelf_monitor/services/model_catalog_service.dart';
+import 'package:shelf_monitor/widgets/aspect_ratio_selector.dart';
 import 'package:shelf_monitor/models/model_option.dart';
 
 /// A decodable JPEG for tests that put a captured still on screen.
@@ -256,6 +257,50 @@ void main() {
         greaterThan(afterCapture),
         reason: 'retake must restart the stream regardless of the ready flag',
       );
+    });
+  });
+
+  group('aspect ratio framing', () {
+    // Regression: selecting a ratio used to wrap CameraPreview in
+    // Center/AspectRatio/ClipRRect. That re-parents the platform view, and on
+    // web it orphans the <video> element permanently -- black preview, no
+    // recovery even after switching back to Full. Framing must therefore never
+    // restructure the preview subtree.
+    testWidgets('switching ratio does not touch the camera', (tester) async {
+      final camera = await pumpScreen(tester);
+      final initialiseCalls = camera.initializeCalls;
+      final disposeCalls = camera.disposeCalls;
+
+      for (final label in ['1:1', '4:3', '16:9', 'Full']) {
+        await tester.tap(find.text(label));
+        await settle(tester);
+      }
+
+      expect(
+        camera.initializeCalls,
+        initialiseCalls,
+        reason: 'framing is an overlay; it must not re-acquire the camera',
+      );
+      expect(
+        camera.disposeCalls,
+        disposeCalls,
+        reason: 'framing must not tear the preview down',
+      );
+      expect(camera.isReady, isTrue);
+    });
+
+    testWidgets('every ratio remains selectable and reversible', (
+      tester,
+    ) async {
+      await pumpScreen(tester);
+
+      for (final label in ['16:9', 'Full', '1:1', 'Full']) {
+        await tester.tap(find.text(label));
+        await settle(tester);
+        // The selector stays on screen throughout: a framing choice that hides
+        // its own control is a dead end.
+        expect(find.byType(AspectRatioSelector), findsOneWidget);
+      }
     });
   });
 

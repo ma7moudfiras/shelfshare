@@ -375,13 +375,35 @@ class _CaptureScreenState extends State<CaptureScreen>
       );
     }
 
-    // Fill the screen and crop overflow, rather than letterboxing: a camera
-    // that shows black bars looks unfinished.
-    return ClipRect(
-      child: _AspectFramedPreview(
-        aspect: _aspect,
-        child: CameraPreview(controller),
-      ),
+    // The preview subtree is deliberately IDENTICAL for every aspect ratio.
+    // Restructuring it (wrapping in AspectRatio/ClipRRect when a ratio is
+    // chosen) re-parents the underlying platform view, and on web that orphans
+    // the <video> element permanently -- the preview goes black and does not
+    // come back even when the ratio is set to Full again.
+    //
+    // Framing is therefore drawn as a sibling overlay rather than by resizing
+    // the preview. That is also how camera apps normally show a crop: the
+    // excluded area stays visible but dimmed, so the operator can see what is
+    // about to be cut off.
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        ClipRect(
+          key: const ValueKey('camera-preview'),
+          child: SizedBox.expand(
+            child: FittedBox(
+              fit: BoxFit.cover,
+              child: SizedBox(
+                width: MediaQuery.sizeOf(context).width,
+                height: MediaQuery.sizeOf(context).height,
+                child: CameraPreview(controller),
+              ),
+            ),
+          ),
+        ),
+        if (_aspect.cropsFrame)
+          Positioned.fill(child: _FramingMask(ratio: _aspect.ratio!)),
+      ],
     );
   }
 
@@ -519,40 +541,77 @@ class _CaptureScreenState extends State<CaptureScreen>
   }
 }
 
-/// Frames the live preview to the selected aspect ratio.
+/// Dims everything outside the selected framing.
 ///
-/// The preview is scaled to cover the frame rather than fit inside it, so the
-/// operator sees exactly the region that will survive the crop.
-class _AspectFramedPreview extends StatelessWidget {
-  final CaptureAspectRatio aspect;
-  final Widget child;
+/// An overlay rather than a resize: the preview subtree must stay structurally
+/// identical across ratio changes or the web platform view is destroyed.
+class _FramingMask extends StatelessWidget {
+  /// Width divided by height of the region that will survive the crop.
+  final double ratio;
 
-  const _AspectFramedPreview({required this.aspect, required this.child});
+  const _FramingMask({required this.ratio});
 
   @override
   Widget build(BuildContext context) {
-    if (!aspect.cropsFrame) {
-      return SizedBox.expand(
-        child: FittedBox(fit: BoxFit.cover, child: _sized(context)),
-      );
-    }
-
-    return Center(
-      child: AspectRatio(
-        aspectRatio: aspect.ratio!,
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(AppTheme.radius),
-          child: FittedBox(fit: BoxFit.cover, child: _sized(context)),
+    return IgnorePointer(
+      child: CustomPaint(
+        painter: _FramingMaskPainter(
+          ratio: ratio,
+          // Matches the crop the captured image actually receives.
+          scrim: Colors.black.withValues(alpha: 0.55),
         ),
       ),
     );
   }
+}
 
-  /// CameraPreview has no intrinsic size inside a FittedBox, so give it one.
-  Widget _sized(BuildContext context) {
-    final size = MediaQuery.sizeOf(context);
-    return SizedBox(width: size.width, height: size.height, child: child);
+class _FramingMaskPainter extends CustomPainter {
+  final double ratio;
+  final Color scrim;
+
+  const _FramingMaskPainter({required this.ratio, required this.scrim});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final frame = _frameRect(size);
+
+    // Punch the frame out of a full-bleed scrim so only the excluded area dims.
+    final overlay = Path.combine(
+      PathOperation.difference,
+      Path()..addRect(Offset.zero & size),
+      Path()..addRRect(
+        RRect.fromRectAndRadius(frame, const Radius.circular(AppTheme.radius)),
+      ),
+    );
+    canvas.drawPath(overlay, Paint()..color = scrim);
+
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(frame, const Radius.circular(AppTheme.radius)),
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.5
+        ..color = Colors.white.withValues(alpha: 0.85),
+    );
   }
+
+  /// Largest rect of [ratio] that fits inside [size], centred.
+  Rect _frameRect(Size size) {
+    var width = size.width;
+    var height = width / ratio;
+    if (height > size.height) {
+      height = size.height;
+      width = height * ratio;
+    }
+    return Rect.fromCenter(
+      center: Offset(size.width / 2, size.height / 2),
+      width: width,
+      height: height,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _FramingMaskPainter old) =>
+      old.ratio != ratio || old.scrim != scrim;
 }
 
 /// Floating controls along the top edge.
