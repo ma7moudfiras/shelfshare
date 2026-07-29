@@ -179,8 +179,13 @@ class RoboflowService implements DetectionService {
       if (!useProxy) 'api_key': AppConfig.roboflowApiKey,
       'inputs': {
         'image': {'type': 'base64', 'value': base64Encode(imageBytes)},
+        // WorkflowParameter values belong INSIDE `inputs`, alongside the image.
+        // The Workflows REST API has no top-level `parameters` field: sending
+        // one is silently ignored, and the workflow then runs every declared
+        // default -- which pinned model_id to aystro-project/1 and made the
+        // model picker and confidence control appear to do nothing.
+        ...parameters.toJson(),
       },
-      'parameters': parameters.toJson(),
     });
 
     final stopwatch = Stopwatch()..start();

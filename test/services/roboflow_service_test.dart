@@ -110,10 +110,18 @@ ROBOFLOW_BASE_URL=https://serverless.roboflow.com
       expect(image['type'], 'base64');
       expect(base64Decode(image['value'] as String), sampleBytes);
 
-      // Parameter names must match the workflow's declared inputs exactly.
+      // Parameters must sit INSIDE `inputs`, not in a sibling `parameters`
+      // object -- the Workflows REST API ignores the latter entirely, which
+      // silently pins every run to the workflow's declared defaults.
       expect(
-        (body['parameters'] as Map).keys,
+        body.containsKey('parameters'),
+        isFalse,
+        reason: 'a top-level parameters block is silently ignored by Roboflow',
+      );
+      expect(
+        (body['inputs'] as Map).keys,
         containsAll([
+          'image',
           'confidence',
           'iou_threshold',
           'class_agnostic_nms',
@@ -121,7 +129,7 @@ ROBOFLOW_BASE_URL=https://serverless.roboflow.com
           'model_id',
         ]),
       );
-      expect((body['parameters'] as Map)['model_id'], 'aystro-project/11');
+      expect((body['inputs'] as Map)['model_id'], 'aystro-project/11');
     });
 
     test('computes Share of Shelf from the parsed detections', () async {
@@ -148,7 +156,7 @@ ROBOFLOW_BASE_URL=https://serverless.roboflow.com
       // before most classes existed. Shipping that default is what made only
       // coca-cola appear.
       final body = jsonDecode(captured.single.body) as Map<String, dynamic>;
-      expect((body['parameters'] as Map)['model_id'], 'aystro-project/11');
+      expect((body['inputs'] as Map)['model_id'], 'aystro-project/11');
     });
 
     test('honours ROBOFLOW_MODEL_ID from the environment', () async {
@@ -163,7 +171,7 @@ ROBOFLOW_MODEL_ID=aystro-project/9
       await service.detectProducts(sampleBytes);
 
       final body = jsonDecode(captured.single.body) as Map<String, dynamic>;
-      expect((body['parameters'] as Map)['model_id'], 'aystro-project/9');
+      expect((body['inputs'] as Map)['model_id'], 'aystro-project/9');
     });
 
     test('an explicit parameters object still wins', () async {
@@ -181,7 +189,25 @@ ROBOFLOW_MODEL_ID=aystro-project/9
       await service.detectProducts(sampleBytes);
 
       final body = jsonDecode(captured.single.body) as Map<String, dynamic>;
-      expect((body['parameters'] as Map)['model_id'], 'aystro-project/7');
+      expect((body['inputs'] as Map)['model_id'], 'aystro-project/7');
+    });
+  });
+
+  group('per-call overrides reach the wire', () {
+    test('modelId and confidence are sent inside inputs', () async {
+      final (service, captured) = serviceReplaying(fixture.readAsStringSync());
+
+      await service.detectProducts(
+        sampleBytes,
+        modelId: 'aystro-project/9',
+        confidence: 0.15,
+      );
+
+      final inputs =
+          (jsonDecode(captured.single.body) as Map<String, dynamic>)['inputs']
+              as Map;
+      expect(inputs['model_id'], 'aystro-project/9');
+      expect(inputs['confidence'], closeTo(0.15, 1e-9));
     });
   });
 
@@ -247,7 +273,7 @@ ROBOFLOW_MODEL_ID=aystro-project/9
 
       // Everything else is identical, so the server can forward it as-is.
       expect((body['inputs'] as Map)['image'], isNotNull);
-      expect((body['parameters'] as Map)['model_id'], 'aystro-project/11');
+      expect((body['inputs'] as Map)['model_id'], 'aystro-project/11');
     });
 
     test('parses a proxied response identically', () async {

@@ -124,14 +124,19 @@ export default async function handler(req, res) {
   const baseUrl = process.env.ROBOFLOW_BASE_URL || DEFAULTS.baseUrl;
   const url = `${baseUrl}/${workspace}/workflows/${workflowId}`;
 
-  // Rebuild the payload rather than spreading the client's: this way an
-  // `api_key` sent by a client can never override the server's.
-  const payload = {
-    api_key: apiKey,
-    inputs: { image: { type: 'base64', value: image.value } },
-  };
-  if (body.parameters && typeof body.parameters === 'object') {
-    payload.parameters = { ...body.parameters };
+  // Workflow parameters belong INSIDE `inputs`, next to the image. The
+  // Workflows REST API has no top-level `parameters` field and silently
+  // ignores one, which makes every request run the workflow's declared
+  // defaults no matter what the client asked for.
+  const inputs = { image: { type: 'base64', value: image.value } };
+
+  // Accept them from either location so an older client keeps working.
+  for (const source of [body.inputs, body.parameters]) {
+    if (!source || typeof source !== 'object') continue;
+    for (const [key, value] of Object.entries(source)) {
+      if (key === 'image') continue; // never let a second image through
+      inputs[key] = value;
+    }
   }
 
   // Server-side model override. A web build bakes its .env in at compile time,
@@ -139,9 +144,11 @@ export default async function handler(req, res) {
   // ROBOFLOW_MODEL_ID in the project environment repoints every request at a
   // newly trained version immediately after a redeploy.
   const modelOverride = process.env.ROBOFLOW_MODEL_ID?.trim();
-  if (modelOverride) {
-    payload.parameters = { ...payload.parameters, model_id: modelOverride };
-  }
+  if (modelOverride) inputs.model_id = modelOverride;
+
+  // Rebuild the payload rather than spreading the client's: this way an
+  // `api_key` sent by a client can never override the server's.
+  const payload = { api_key: apiKey, inputs };
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT_MS);
