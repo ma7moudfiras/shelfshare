@@ -229,9 +229,18 @@ class SupabaseAuthService implements AuthService {
       await _client.auth.signInWithOAuth(
         OAuthProvider.google,
         // On web the browser returns to the app's own origin; on native the
-        // deep link is registered per platform. Null lets the SDK choose the
-        // right default for the platform it is running on.
-        redirectTo: kIsWeb ? null : 'io.supabase.shelfmonitor://login-callback/',
+        // On web, come back to the origin the user actually signed in from.
+        // Passing null instead sends no redirect_to at all, and Supabase then
+        // falls back to the single Site URL configured in its dashboard --
+        // which means signing in from the preview deployment lands you on
+        // production, or on localhost:3000 if nobody changed the default.
+        // Supabase still checks this against its redirect allow-list, so an
+        // origin that is not listed is refused rather than honoured.
+        //
+        // On native the deep link is registered per platform instead.
+        redirectTo: kIsWeb
+            ? Uri.base.origin
+            : 'io.supabase.shelfmonitor://login-callback/',
         authScreenLaunchMode: kIsWeb
             ? LaunchMode.platformDefault
             : LaunchMode.externalApplication,
