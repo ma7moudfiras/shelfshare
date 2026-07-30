@@ -8,6 +8,7 @@ import 'package:shelf_monitor/models/detection_result.dart';
 import 'package:shelf_monitor/screens/capture_screen.dart';
 import 'package:shelf_monitor/services/camera_service.dart';
 import 'package:shelf_monitor/services/detection_service.dart';
+import 'package:shelf_monitor/services/image_processor.dart';
 import 'package:shelf_monitor/services/model_catalog_service.dart';
 import 'package:shelf_monitor/widgets/aspect_ratio_selector.dart';
 import 'package:shelf_monitor/models/model_option.dart';
@@ -93,6 +94,21 @@ class FakeCatalogService implements ModelCatalogService {
   void dispose() {}
 }
 
+/// Pass-through processor.
+///
+/// Real compression decodes and re-encodes a JPEG on an isolate, which takes
+/// far longer than a widget test pumps. Its behaviour is covered directly in
+/// image_processor_test.dart; here it only needs to not be the bottleneck.
+class PassThroughImageProcessor implements ImageProcessor {
+  int calls = 0;
+
+  @override
+  Future<Uint8List> prepareForUpload(Uint8List bytes, Object aspect) async {
+    calls++;
+    return bytes;
+  }
+}
+
 class StubDetectionService implements DetectionService {
   @override
   Future<DetectionResult> detectProducts(
@@ -127,6 +143,7 @@ void main() {
           cameraService: camera,
           detectionService: StubDetectionService(),
           catalogService: FakeCatalogService(),
+          imageProcessor: PassThroughImageProcessor(),
         ),
       ),
     );
@@ -315,6 +332,7 @@ void main() {
             cameraService: camera,
             detectionService: StubDetectionService(),
             catalogService: FakeCatalogService(),
+            imageProcessor: PassThroughImageProcessor(),
           ),
         ),
       );

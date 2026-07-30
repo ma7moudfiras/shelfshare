@@ -29,11 +29,16 @@ class CaptureScreen extends StatefulWidget {
   final CameraService? cameraService;
   final ModelCatalogService? catalogService;
 
+  /// Compresses captures before upload. Injectable so widget tests can skip
+  /// real JPEG work, which is far too slow to complete inside a pumped frame.
+  final ImageProcessor? imageProcessor;
+
   const CaptureScreen({
     super.key,
     this.detectionService,
     this.cameraService,
     this.catalogService,
+    this.imageProcessor,
   });
 
   @override
@@ -47,7 +52,8 @@ class _CaptureScreenState extends State<CaptureScreen>
   late final ModelCatalogService _catalogService =
       widget.catalogService ?? ModelCatalogService();
 
-  static const ImageProcessor _imageProcessor = ImageProcessor();
+  late final ImageProcessor _imageProcessor =
+      widget.imageProcessor ?? const ImageProcessor();
 
   /// Bytes of the current capture, already cropped to the chosen framing.
   Uint8List? _capturedBytes;
@@ -59,6 +65,9 @@ class _CaptureScreenState extends State<CaptureScreen>
   bool _isCameraReady = false;
   String? _cameraError;
   bool _isInitializingCamera = false;
+
+  /// True while a capture is being cropped and compressed for upload.
+  bool _isPreparing = false;
 
   ModelCatalog _catalog = const ModelCatalog.empty();
   bool _isLoadingCatalog = false;
@@ -162,7 +171,10 @@ class _CaptureScreenState extends State<CaptureScreen>
       await _useImage(photo);
     } on CameraException catch (e) {
       if (!mounted) return;
-      setState(() => _errorMessage = e.description ?? 'Capture failed.');
+      setState(() {
+        _isPreparing = false;
+        _errorMessage = e.description ?? 'Capture failed.';
+      });
     }
   }
 
@@ -173,6 +185,10 @@ class _CaptureScreenState extends State<CaptureScreen>
 
   /// Loads [photo], crops it to the chosen framing, then analyses it.
   Future<void> _useImage(XFile photo) async {
+    // Compressing a 12MP capture takes real time. Show the busy state before
+    // starting, or the shutter simply appears not to have worked.
+    setState(() => _isPreparing = true);
+
     final raw = await photo.readAsBytes();
     // Always process, not only when a crop applies: an unprocessed phone
     // capture routinely exceeds the serverless request limit, and the model
@@ -188,6 +204,7 @@ class _CaptureScreenState extends State<CaptureScreen>
     setState(() {
       _capturedBytes = bytes;
       _isCameraReady = false;
+      _isPreparing = false;
       _result = null;
       _errorMessage = null;
     });
@@ -288,6 +305,7 @@ class _CaptureScreenState extends State<CaptureScreen>
       _result = null;
       _errorMessage = null;
       _isAnalyzing = false;
+      _isPreparing = false;
     });
     // Unconditional: on iOS Safari the controller can still report ready while
     // its underlying stream is dead.
@@ -420,9 +438,9 @@ class _CaptureScreenState extends State<CaptureScreen>
       child: SafeArea(
         top: false,
         child: CaptureControls(
-          canCapture: _isCameraReady && !_isAnalyzing,
+          canCapture: _isCameraReady && !_isAnalyzing && !_isPreparing,
           hasCapture: false,
-          isBusy: _isAnalyzing,
+          isBusy: _isAnalyzing || _isPreparing,
           onCapture: _onCapture,
           onPickFromGallery: _onPickFromGallery,
           onRetake: _reset,
