@@ -110,6 +110,24 @@ class AppConfig {
   static Uri get workflowEndpoint =>
       Uri.parse('$baseUrl/$workspace/workflows/$workflowId');
 
+  // --- Supabase -------------------------------------------------------------
+
+  /// Supabase project URL.
+  static String? get supabaseUrl => _read('SUPABASE_URL');
+
+  /// Publishable (anon) key.
+  ///
+  /// Safe in a client build by design: it grants nothing on its own, because
+  /// every table is protected by Row Level Security. This is NOT the
+  /// service_role key, which bypasses RLS and must never ship to a device.
+  static String? get supabasePublishableKey =>
+      _read('SUPABASE_PUBLISHABLE_KEY') ?? _read('SUPABASE_ANON_KEY');
+
+  /// Whether the backend is configured. When false the app runs in its
+  /// original single-user capture mode rather than failing to start.
+  static bool get hasSupabase =>
+      supabaseUrl != null && supabasePublishableKey != null;
+
   /// Whether the app has what it needs to run detection.
   ///
   /// In proxy mode the client needs no key at all -- the server holds it -- so
