@@ -3,12 +3,16 @@ import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
 import '../theme/app_theme.dart';
 
-/// Email and Google sign-in.
+/// Sign in with email or Google.
 ///
-/// Sign-up is offered alongside sign-in because reps are onboarded by being
-/// given the app, not by an admin pre-creating credentials. A new account
-/// lands as `pending` and can read nothing until an admin assigns it, so
-/// self-signup is safe.
+/// There is deliberately no registration form: accounts are granted by an
+/// administrator, never self-created. Signing in with Google is still allowed
+/// for anyone, but a new account lands with no company and no access until an
+/// admin assigns it -- authentication is not authorisation.
+///
+/// Note the enforcement is in the database, not here. Hiding a button would
+/// not stop anyone calling the signup endpoint directly; the profiles trigger
+/// is what guarantees a new account is powerless.
 class SignInScreen extends StatefulWidget {
   final AuthService authService;
 
@@ -22,9 +26,7 @@ class _SignInScreenState extends State<SignInScreen> {
   final _formKey = GlobalKey<FormState>();
   final _email = TextEditingController();
   final _password = TextEditingController();
-  final _fullName = TextEditingController();
 
-  bool _isRegistering = false;
   bool _isBusy = false;
   bool _obscurePassword = true;
   String? _error;
@@ -34,7 +36,6 @@ class _SignInScreenState extends State<SignInScreen> {
   void dispose() {
     _email.dispose();
     _password.dispose();
-    _fullName.dispose();
     super.dispose();
   }
 
@@ -64,24 +65,27 @@ class _SignInScreenState extends State<SignInScreen> {
 
   Future<void> _submitEmail() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
+    await _run(
+      () => widget.authService.signInWithEmail(
+        email: _email.text,
+        password: _password.text,
+      ),
+    );
+  }
 
-    if (_isRegistering) {
-      await _run(
-        () => widget.authService.signUpWithEmail(
-          email: _email.text,
-          password: _password.text,
-          fullName: _fullName.text,
-        ),
-        successNotice: 'Account created. Check your email to confirm it.',
-      );
-    } else {
-      await _run(
-        () => widget.authService.signInWithEmail(
-          email: _email.text,
-          password: _password.text,
-        ),
-      );
+  /// Also the first-time path for an account an admin created: the person sets
+  /// their own password from the emailed link, so no one has to hand a
+  /// credential over.
+  Future<void> _resetPassword() async {
+    if ((_email.text).trim().isEmpty) {
+      setState(() => _error = 'Enter your email first, then tap this again.');
+      return;
     }
+    await _run(
+      () => widget.authService.sendPasswordReset(_email.text),
+      successNotice:
+          'If that account exists, a link to set a password is on its way.',
+    );
   }
 
   @override
@@ -118,28 +122,13 @@ class _SignInScreenState extends State<SignInScreen> {
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      _isRegistering
-                          ? 'Create an account to get started'
-                          : 'Sign in to record and review shelf data',
+                      'Sign in to record and review shelf data',
                       textAlign: TextAlign.center,
                       style: theme.textTheme.bodyMedium?.copyWith(
                         color: theme.colorScheme.onSurfaceVariant,
                       ),
                     ),
                     const SizedBox(height: 32),
-
-                    if (_isRegistering) ...[
-                      TextFormField(
-                        controller: _fullName,
-                        textInputAction: TextInputAction.next,
-                        decoration: const InputDecoration(
-                          labelText: 'Full name',
-                          prefixIcon: Icon(Icons.person_outline),
-                          border: OutlineInputBorder(),
-                        ),
-                      ),
-                      const SizedBox(height: 14),
-                    ],
 
                     TextFormField(
                       controller: _email,
@@ -184,15 +173,8 @@ class _SignInScreenState extends State<SignInScreen> {
                           tooltip: _obscurePassword ? 'Show' : 'Hide',
                         ),
                       ),
-                      validator: (v) {
-                        if ((v ?? '').isEmpty) return 'Enter your password';
-                        // Supabase enforces 6 as well; saying so up front beats
-                        // a round trip to be told.
-                        if (_isRegistering && (v?.length ?? 0) < 6) {
-                          return 'Use at least 6 characters';
-                        }
-                        return null;
-                      },
+                      validator: (v) =>
+                          (v ?? '').isEmpty ? 'Enter your password' : null,
                     ),
 
                     if (_error != null) ...[
@@ -221,7 +203,15 @@ class _SignInScreenState extends State<SignInScreen> {
                               height: 20,
                               child: CircularProgressIndicator(strokeWidth: 2.4),
                             )
-                          : Text(_isRegistering ? 'Create account' : 'Sign in'),
+                          : const Text('Sign in'),
+                    ),
+                    const SizedBox(height: 6),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: TextButton(
+                        onPressed: _isBusy ? null : _resetPassword,
+                        child: const Text('Set or reset password'),
+                      ),
                     ),
 
                     const SizedBox(height: 20),
@@ -259,18 +249,13 @@ class _SignInScreenState extends State<SignInScreen> {
                     ),
 
                     const SizedBox(height: 24),
-                    TextButton(
-                      onPressed: _isBusy
-                          ? null
-                          : () => setState(() {
-                              _isRegistering = !_isRegistering;
-                              _error = null;
-                              _notice = null;
-                            }),
-                      child: Text(
-                        _isRegistering
-                            ? 'Already have an account? Sign in'
-                            : "Don't have an account? Create one",
+                    Text(
+                      'Accounts are created by your administrator. If you '
+                      'cannot sign in, ask them to add you.',
+                      textAlign: TextAlign.center,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                        height: 1.4,
                       ),
                     ),
                   ],

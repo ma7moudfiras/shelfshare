@@ -44,11 +44,7 @@ class FakeAuthService implements AuthService {
   }) async {}
 
   @override
-  Future<void> signUpWithEmail({
-    required String email,
-    required String password,
-    String? fullName,
-  }) async {}
+  Future<void> sendPasswordReset(String email) async {}
 
   @override
   Future<void> signInWithGoogle() async {}
@@ -203,6 +199,45 @@ void main() {
 
       expect(auth.signOutCalls, 1);
       expect(find.byType(SignInScreen), findsOneWidget);
+    });
+  });
+
+  group('no self-registration', () {
+    // Accounts are granted by an administrator. The button is gone, but note
+    // this is presentation only -- the real guarantee is that a new account
+    // lands with no company and no access, enforced by the database.
+    testWidgets('offers no way to create an account', (tester) async {
+      final auth = FakeAuthService();
+      await tester.pumpWidget(
+        MaterialApp(home: SignInScreen(authService: auth)),
+      );
+
+      expect(find.textContaining('Create'), findsNothing);
+      expect(find.textContaining('Sign up'), findsNothing);
+      expect(find.text('Sign in'), findsOneWidget);
+    });
+
+    testWidgets('says where accounts come from', (tester) async {
+      final auth = FakeAuthService();
+      await tester.pumpWidget(
+        MaterialApp(home: SignInScreen(authService: auth)),
+      );
+
+      expect(
+        find.textContaining('created by your administrator'),
+        findsOneWidget,
+      );
+    });
+
+    // Someone whose account an admin created still needs a password, and no
+    // one should be handing credentials over in a message.
+    testWidgets('offers a way to set a first password', (tester) async {
+      final auth = FakeAuthService();
+      await tester.pumpWidget(
+        MaterialApp(home: SignInScreen(authService: auth)),
+      );
+
+      expect(find.text('Set or reset password'), findsOneWidget);
     });
   });
 

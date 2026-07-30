@@ -31,11 +31,12 @@ abstract interface class AuthService {
     required String password,
   });
 
-  Future<void> signUpWithEmail({
-    required String email,
-    required String password,
-    String? fullName,
-  });
+  /// Emails a link to set or reset a password.
+  ///
+  /// There is no registration: this is also how someone whose account an admin
+  /// created chooses their own password, so no one has to hand a credential
+  /// over in a message.
+  Future<void> sendPasswordReset(String email);
 
   Future<void> signInWithGoogle();
 
@@ -145,17 +146,9 @@ class SupabaseAuthService implements AuthService {
   }
 
   @override
-  Future<void> signUpWithEmail({
-    required String email,
-    required String password,
-    String? fullName,
-  }) async {
+  Future<void> sendPasswordReset(String email) async {
     try {
-      await _client.auth.signUp(
-        email: email.trim(),
-        password: password,
-        data: {if (fullName != null && fullName.isNotEmpty) 'full_name': fullName},
-      );
+      await _client.auth.resetPasswordForEmail(email.trim());
     } on AuthException catch (e) {
       throw AuthFailure(_friendly(e));
     }
@@ -197,8 +190,9 @@ class SupabaseAuthService implements AuthService {
     if (message.contains('email not confirmed')) {
       return 'Check your inbox and confirm your email address first.';
     }
-    if (message.contains('user already registered')) {
-      return 'An account with that email already exists. Sign in instead.';
+    if (message.contains('signups not allowed') ||
+        message.contains('signup is disabled')) {
+      return 'Accounts are created by an administrator. Ask them to add you.';
     }
     if (message.contains('provider is not enabled')) {
       return 'Google sign-in is not enabled for this project yet.';
