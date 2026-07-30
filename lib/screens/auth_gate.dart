@@ -4,6 +4,7 @@ import '../models/user_profile.dart';
 import '../services/auth_service.dart';
 import '../services/detection_service.dart';
 import 'capture_screen.dart';
+import 'company_request_screen.dart';
 import 'pending_screen.dart';
 import 'sign_in_screen.dart';
 
@@ -40,6 +41,14 @@ class AuthGate extends StatelessWidget {
         if (profile == null) return SignInScreen(authService: authService);
 
         if (!profile.canUseApp) {
+          // A deactivated user is not asked to pick a company: they already
+          // had one, and choosing again would imply their account is new.
+          if (profile.isActive && !profile.hasRequestedAccess) {
+            return CompanyRequestScreen(
+              profile: profile,
+              authService: authService,
+            );
+          }
           return PendingScreen(profile: profile, authService: authService);
         }
 

@@ -36,6 +36,13 @@ class _PendingScreenState extends State<PendingScreen> {
     if (mounted) setState(() => _isChecking = false);
   }
 
+  /// Sends the user back to the picker by withdrawing the request.
+  Future<void> _clearRequest() async {
+    setState(() => _isChecking = true);
+    await widget.authService.requestAccess('');
+    if (mounted) setState(() => _isChecking = false);
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -63,7 +70,7 @@ class _PendingScreenState extends State<PendingScreen> {
                   Text(
                     isDeactivated
                         ? 'Your access has been turned off'
-                        : 'Waiting for access',
+                        : 'Waiting for approval',
                     textAlign: TextAlign.center,
                     style: theme.textTheme.titleLarge?.copyWith(
                       fontWeight: FontWeight.w600,
@@ -74,9 +81,13 @@ class _PendingScreenState extends State<PendingScreen> {
                     isDeactivated
                         ? 'An administrator has deactivated this account. '
                               'Contact them if you think this is a mistake.'
-                        : 'Your account is set up, but it has not been linked '
-                              'to a company yet. An administrator needs to add '
-                              'you before you can record or view shelf data.',
+                        : profile.requestedCompanyName != null
+                        ? 'Your request has been sent to '
+                              '${profile.requestedCompanyName}. An '
+                              'administrator there will approve it and set '
+                              'what you can do.'
+                        : 'Your request has been sent. An administrator will '
+                              'approve it and set what you can do.',
                     textAlign: TextAlign.center,
                     style: theme.textTheme.bodyMedium?.copyWith(
                       color: theme.colorScheme.onSurfaceVariant,
@@ -128,7 +139,14 @@ class _PendingScreenState extends State<PendingScreen> {
                           : const Icon(Icons.refresh, size: 18),
                       label: Text(_isChecking ? 'Checking…' : 'Check again'),
                     ),
-                  const SizedBox(height: 8),
+                  // Picking the wrong company should not be a dead end that
+                  // requires an admin to notice and fix.
+                  if (!isDeactivated && profile.hasRequestedAccess)
+                    TextButton(
+                      onPressed: _isChecking ? null : _clearRequest,
+                      child: const Text('Choose a different company'),
+                    ),
+                  const SizedBox(height: 4),
                   TextButton.icon(
                     onPressed: widget.authService.signOut,
                     icon: const Icon(Icons.logout, size: 18),

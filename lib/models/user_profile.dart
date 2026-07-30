@@ -65,6 +65,14 @@ class UserProfile {
   final String? email;
   final bool isActive;
 
+  /// Company this user has *asked* to join, while still pending.
+  ///
+  /// Deliberately separate from [companyId], which means granted. Reusing one
+  /// field for both would make an unapproved request indistinguishable from
+  /// membership.
+  final String? requestedCompanyId;
+  final String? requestedCompanyName;
+
   const UserProfile({
     required this.id,
     required this.role,
@@ -73,12 +81,15 @@ class UserProfile {
     this.fullName,
     this.email,
     this.isActive = true,
+    this.requestedCompanyId,
+    this.requestedCompanyName,
   });
 
   factory UserProfile.fromJson(Map<String, dynamic> json) {
     // `companies` arrives as a nested object from the PostgREST join, or is
     // absent when the caller did not request it.
     final company = json['companies'];
+    final requested = json['requested_company'];
     return UserProfile(
       id: json['id'] as String,
       role: UserRole.fromDb(json['role'] as String?),
@@ -87,6 +98,10 @@ class UserProfile {
       fullName: json['full_name'] as String?,
       email: json['email'] as String?,
       isActive: json['is_active'] as bool? ?? true,
+      requestedCompanyId: json['requested_company_id'] as String?,
+      requestedCompanyName: requested is Map
+          ? requested['name'] as String?
+          : null,
     );
   }
 
@@ -102,6 +117,9 @@ class UserProfile {
   /// A deactivated user is treated as having no access regardless of role, so
   /// revoking someone does not require also changing their role.
   bool get canUseApp => isActive && role.hasAccess;
+
+  /// Waiting on an admin, having already said which company they belong to.
+  bool get hasRequestedAccess => requestedCompanyId != null;
 
   @override
   String toString() => 'UserProfile(${role.dbValue}, company: $companyName)';

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../models/company_option.dart';
 import '../models/user_profile.dart';
 
 /// Raised when sign-in fails for a reason worth showing the user.
@@ -41,6 +42,20 @@ abstract interface class AuthService {
   Future<void> signInWithGoogle();
 
   Future<void> signOut();
+
+  /// Companies a pending user may request access to.
+  ///
+  /// Readable only while pending, and only active companies, so the list is
+  /// the smallest disclosure that still makes the picker work.
+  Future<List<CompanyOption>> availableCompanies();
+
+  /// Records which company this user is asking to join.
+  ///
+  /// Grants nothing. It routes the request to that company's administrator
+  /// instead of leaving it in one global queue. An empty [companyId] withdraws
+  /// the request, sending the user back to the picker -- choosing the wrong
+  /// company should not be a dead end only an admin can clear.
+  Future<void> requestAccess(String companyId);
 
   /// Re-reads the profile from the database.
   ///
@@ -103,7 +118,9 @@ class SupabaseAuthService implements AuthService {
       final row = await _client
           .from('profiles')
           .select('id, role, company_id, full_name, email, is_active, '
-              'companies(name)')
+              'requested_company_id, '
+              'companies!profiles_company_id_fkey(name), '
+              'requested_company:companies!profiles_requested_company_id_fkey(name)')
           .eq('id', user.id)
           .maybeSingle();
 
@@ -142,6 +159,41 @@ class SupabaseAuthService implements AuthService {
       );
     } on AuthException catch (e) {
       throw AuthFailure(_friendly(e));
+    }
+  }
+
+  @override
+  Future<List<CompanyOption>> availableCompanies() async {
+    try {
+      final rows = await _client
+          .from('companies')
+          .select('id, name')
+          .order('name');
+      return rows
+          .map((r) => CompanyOption.fromJson(r))
+          .toList(growable: false);
+    } on PostgrestException catch (e) {
+      debugPrint('Company list failed: ${e.message}');
+      return const [];
+    }
+  }
+
+  @override
+  Future<void> requestAccess(String companyId) async {
+    final user = _client.auth.currentUser;
+    if (user == null) throw const AuthFailure('You are not signed in.');
+
+    try {
+      final withdrawing = companyId.isEmpty;
+      await _client.from('profiles').update({
+        'requested_company_id': withdrawing ? null : companyId,
+        'requested_at': withdrawing
+            ? null
+            : DateTime.now().toUtc().toIso8601String(),
+      }).eq('id', user.id);
+      await refreshProfile();
+    } on PostgrestException catch (e) {
+      throw AuthFailure('Could not send the request: ${e.message}');
     }
   }
 
