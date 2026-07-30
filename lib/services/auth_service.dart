@@ -90,9 +90,17 @@ class SupabaseAuthService implements AuthService {
 
   Future<void> _handleAuthChange(AuthState state) async {
     switch (state.event) {
+      // initialSession fires once on cold start, with or without a restored
+      // session, and it MUST emit. AuthGate holds a StreamBuilder on this
+      // stream and shows its splash until the first event arrives -- so
+      // letting this case fall through leaves every visitor who is not already
+      // signed in staring at a spinner that never resolves.
+      case AuthChangeEvent.initialSession:
       case AuthChangeEvent.signedIn:
       case AuthChangeEvent.tokenRefreshed:
       case AuthChangeEvent.userUpdated:
+        // Emits null by itself when there is no user, which is the signed-out
+        // case and sends the gate to the sign-in screen.
         await refreshProfile();
       case AuthChangeEvent.signedOut:
         _emit(null);
@@ -142,6 +150,15 @@ class SupabaseAuthService implements AuthService {
       debugPrint('Profile lookup failed: ${e.message}');
       // Never leave a stale profile behind on failure: showing the previous
       // user's role would be worse than showing none.
+      _emit(null);
+      return null;
+    } catch (error) {
+      // Anything else here is essentially always the network -- no signal, DNS,
+      // TLS. It has to be caught for the same reason initialSession has to be
+      // handled: this runs inside the auth listener, so an escaping error emits
+      // nothing and the gate waits on its splash forever. Failing to null sends
+      // the user to sign-in, where trying again produces a real message.
+      debugPrint('Profile lookup failed: $error');
       _emit(null);
       return null;
     }
