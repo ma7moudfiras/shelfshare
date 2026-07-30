@@ -4,11 +4,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shelf_monitor/models/company_option.dart';
 import 'package:shelf_monitor/models/user_profile.dart';
+import 'package:shelf_monitor/screens/admin_dashboard_screen.dart';
 import 'package:shelf_monitor/screens/auth_gate.dart';
 import 'package:shelf_monitor/screens/company_request_screen.dart';
 import 'package:shelf_monitor/screens/pending_screen.dart';
 import 'package:shelf_monitor/screens/sign_in_screen.dart';
 import 'package:shelf_monitor/services/auth_service.dart';
+
+import 'admin_dashboard_screen_test.dart' show FakeAdminService;
 
 class FakeAuthService implements AuthService {
   final _controller = StreamController<UserProfile?>.broadcast();
@@ -94,7 +97,16 @@ UserProfile profileWith(
 }
 
 Future<void> pumpGate(WidgetTester tester, FakeAuthService auth) async {
-  await tester.pumpWidget(MaterialApp(home: AuthGate(authService: auth)));
+  await tester.pumpWidget(
+    MaterialApp(
+      home: AuthGate(
+        authService: auth,
+        // Admin routes render a real dashboard, which needs a service. A fake
+        // keeps the gate's routing testable without a database.
+        adminService: FakeAdminService(),
+      ),
+    ),
+  );
   await tester.pump();
 }
 
@@ -243,7 +255,7 @@ void main() {
 
       expect(find.byType(PendingScreen), findsNothing);
       expect(find.byType(SignInScreen), findsNothing);
-      expect(find.textContaining('Signed in as'), findsOneWidget);
+      expect(find.byType(AdminDashboardScreen), findsOneWidget);
     });
 
     testWidgets('signing out returns to sign-in', (tester) async {

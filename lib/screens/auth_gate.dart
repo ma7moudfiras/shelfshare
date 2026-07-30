@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 
 import '../models/user_profile.dart';
+import '../services/admin_service.dart';
 import '../services/auth_service.dart';
 import '../services/detection_service.dart';
+import 'admin_dashboard_screen.dart';
 import 'capture_screen.dart';
 import 'company_request_screen.dart';
 import 'pending_screen.dart';
@@ -17,10 +19,15 @@ class AuthGate extends StatelessWidget {
   final AuthService authService;
   final DetectionService? detectionService;
 
+  /// Supplied by [main]. Nullable only so tests can omit it when the route
+  /// under test never reaches a dashboard.
+  final AdminService? adminService;
+
   const AuthGate({
     super.key,
     required this.authService,
     this.detectionService,
+    this.adminService,
   });
 
   @override
@@ -52,18 +59,26 @@ class AuthGate extends StatelessWidget {
           return PendingScreen(profile: profile, authService: authService);
         }
 
+        final admin = adminService;
+
         return switch (profile.role) {
           // Reps go straight to the camera: their job is capture, and every
           // extra screen between them and the shutter costs a visit.
           UserRole.salesRep => CaptureScreen(detectionService: detectionService),
 
-          // Dashboards are the next milestone; until then admins get an
-          // honest placeholder rather than a broken screen.
-          UserRole.companyAdmin || UserRole.platformAdmin => _ComingSoon(
-            profile: profile,
-            authService: authService,
-            detectionService: detectionService,
-          ),
+          // Both admin roles share one dashboard. What they can see differs,
+          // but Row Level Security decides that, not this switch.
+          UserRole.companyAdmin || UserRole.platformAdmin when admin != null =>
+            AdminDashboardScreen(
+              profile: profile,
+              authService: authService,
+              adminService: admin,
+              detectionService: detectionService,
+            ),
+
+          // Only reachable if the app was built without an admin service,
+          // which main() does not do once the backend is up.
+          UserRole.companyAdmin || UserRole.platformAdmin => const _Splash(),
 
           UserRole.pending => PendingScreen(
             profile: profile,
@@ -86,92 +101,6 @@ class _Splash extends StatelessWidget {
           width: 28,
           height: 28,
           child: CircularProgressIndicator(strokeWidth: 2.5),
-        ),
-      ),
-    );
-  }
-}
-
-/// Placeholder home for admin roles until dashboards exist.
-///
-/// Offers the capture screen too, so an admin can exercise the working part of
-/// the app rather than hitting a dead end.
-class _ComingSoon extends StatelessWidget {
-  final UserProfile profile;
-  final AuthService authService;
-  final DetectionService? detectionService;
-
-  const _ComingSoon({
-    required this.profile,
-    required this.authService,
-    this.detectionService,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Shelf Monitor'),
-        actions: [
-          IconButton(
-            onPressed: authService.signOut,
-            icon: const Icon(Icons.logout),
-            tooltip: 'Sign out',
-          ),
-        ],
-      ),
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                Icons.insights_outlined,
-                size: 46,
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-              const SizedBox(height: 18),
-              Text(
-                'Signed in as ${profile.displayName}',
-                style: theme.textTheme.titleMedium,
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 6),
-              Text(
-                [
-                  profile.role.label,
-                  if (profile.companyName != null) profile.companyName!,
-                ].join(' · '),
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
-              const SizedBox(height: 24),
-              Text(
-                'Dashboards are not built yet. In the meantime you can use the '
-                'capture screen to test detection.',
-                textAlign: TextAlign.center,
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                  height: 1.4,
-                ),
-              ),
-              const SizedBox(height: 24),
-              FilledButton.icon(
-                onPressed: () => Navigator.of(context).push(
-                  MaterialPageRoute<void>(
-                    builder: (_) =>
-                        CaptureScreen(detectionService: detectionService),
-                  ),
-                ),
-                icon: const Icon(Icons.photo_camera_outlined, size: 18),
-                label: const Text('Open capture'),
-              ),
-            ],
-          ),
         ),
       ),
     );
