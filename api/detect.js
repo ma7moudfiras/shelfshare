@@ -43,8 +43,15 @@ const DEFAULTS = {
  */
 const API_KEY_NAMES = ['ROBOFLOW_API_KEY', 'ROBOFLOW_API_KE'];
 
-/** Upper bound on the request body. Base64 inflates bytes by ~33%. */
-const MAX_BODY_BYTES = 12 * 1024 * 1024;
+/**
+ * Upper bound on the base64 image, in characters.
+ *
+ * Vercel rejects serverless requests whose body exceeds ~4.5 MB before the
+ * function ever runs, so a larger ceiling here would be fiction -- the platform
+ * returns 413 first. 3.5 MB of base64 (~2.6 MB of JPEG) leaves room for the
+ * JSON envelope underneath that cap.
+ */
+const MAX_BODY_BYTES = 3.5 * 1024 * 1024;
 
 /**
  * Returns the configured Roboflow key, or null when none is set.
@@ -116,7 +123,11 @@ export default async function handler(req, res) {
   }
 
   if (image.value.length > MAX_BODY_BYTES) {
-    return res.status(413).json({ message: 'Image too large.' });
+    return res.status(413).json({
+      message:
+        'Image too large. It must be compressed further before upload - ' +
+        'the serverless request limit is about 4.5 MB including encoding.',
+    });
   }
 
   const workspace = process.env.ROBOFLOW_WORKSPACE || DEFAULTS.workspace;
@@ -182,6 +193,7 @@ export default async function handler(req, res) {
 export const config = {
   api: {
     // Base64 images exceed Vercel's 1mb default.
-    bodyParser: { sizeLimit: '12mb' },
+    // Kept under the platform cap; a larger value is not honoured.
+    bodyParser: { sizeLimit: '4mb' },
   },
 };

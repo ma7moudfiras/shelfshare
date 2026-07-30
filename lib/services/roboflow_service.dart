@@ -296,7 +296,9 @@ class RoboflowService implements DetectionService {
           ? 'Detection proxy not found at $endpoint.'
           : 'Workflow not found. Check ROBOFLOW_WORKSPACE and '
                 'ROBOFLOW_WORKFLOW_ID in your .env.',
-      413 => 'The captured image was too large to accept.',
+      413 =>
+        'The captured image was too large to send. Try a tighter aspect '
+            'ratio, or retake the photo.',
       429 => 'Roboflow rate limit reached. Try again in a moment.',
       _ when status >= 500 => 'The detection service had an error ($status).',
       _ => 'The detection service returned an unexpected status ($status).',

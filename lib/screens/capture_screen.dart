@@ -174,9 +174,10 @@ class _CaptureScreenState extends State<CaptureScreen>
   /// Loads [photo], crops it to the chosen framing, then analyses it.
   Future<void> _useImage(XFile photo) async {
     final raw = await photo.readAsBytes();
-    // Crop before anything else so the still, the overlay and the request all
-    // describe the same pixels.
-    final bytes = await _imageProcessor.cropToAspect(raw, _aspect);
+    // Always process, not only when a crop applies: an unprocessed phone
+    // capture routinely exceeds the serverless request limit, and the model
+    // downsamples to 704px regardless, so full resolution buys nothing.
+    final bytes = await _imageProcessor.prepareForUpload(raw, _aspect);
     if (!mounted) return;
 
     // Release the camera while the still is on screen. On iOS Safari a
