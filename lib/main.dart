@@ -3,7 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'config/app_config.dart';
 import 'screens/auth_gate.dart';
-import 'screens/capture_screen.dart';
+import 'screens/backend_missing_screen.dart';
 import 'services/auth_service.dart';
 import 'services/detection_service.dart';
 import 'services/roboflow_service.dart';
@@ -16,9 +16,8 @@ Future<void> main() async {
   // explain what is missing, rather than crashing on launch.
   await AppConfig.load();
 
-  // Optional on purpose: without Supabase the app still runs as the original
-  // single-user capture tool, which keeps it usable while the backend is being
-  // set up rather than turning a config gap into a blank screen.
+  // Skipped when unconfigured so the app can still start and say so. It will
+  // not run without a backend -- see [ShelfMonitorApp.build].
   if (AppConfig.hasSupabase) {
     await Supabase.initialize(
       url: AppConfig.supabaseUrl!,
@@ -66,8 +65,13 @@ class _ShelfMonitorAppState extends State<ShelfMonitorApp> {
       theme: AppTheme.light(),
       darkTheme: AppTheme.dark(),
       themeMode: ThemeMode.dark,
+      // No auth service means no sign-in, and this app is not open to
+      // whoever finds the URL. It used to fall through to the capture screen
+      // here, which quietly turned a missing environment variable into a
+      // public deployment with no login and a live inference budget behind it.
+      // A configuration gap must look like one.
       home: authService == null
-          ? CaptureScreen(detectionService: _detectionService)
+          ? const BackendMissingScreen()
           : AuthGate(
               authService: authService,
               detectionService: _detectionService,
