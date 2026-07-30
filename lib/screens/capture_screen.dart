@@ -13,6 +13,7 @@ import '../services/model_catalog_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/analysis_settings_sheet.dart';
 import '../widgets/aspect_ratio_selector.dart';
+import '../widgets/camera_stage.dart';
 import '../widgets/capture_controls.dart';
 import '../widgets/detection_overlay.dart';
 import '../widgets/results_panel.dart';
@@ -298,6 +299,19 @@ class _CaptureScreenState extends State<CaptureScreen>
   DetectionResult? get _visibleResult =>
       _result?.filterByClasses(_settings.selectedClasses);
 
+  /// Tears the preview down and brings it back up.
+  ///
+  /// A browser can leave a camera stream dead while the controller still
+  /// reports it as running, and nothing in the app can detect that -- the
+  /// preview is a platform view we do not get to inspect. Rather than leave the
+  /// operator staring at a black rectangle with no way out, this is exposed as
+  /// a button they can always reach.
+  Future<void> _restartCamera() async {
+    _cameraService.dispose();
+    if (mounted) setState(() => _isCameraReady = false);
+    await _initializeCamera();
+  }
+
   /// Clears the capture and returns to the live preview.
   void _reset() {
     setState(() {
@@ -329,6 +343,7 @@ class _CaptureScreenState extends State<CaptureScreen>
               onSettings: _openSettings,
               onClose: hasCapture ? _reset : null,
               onFullScreen: hasCapture ? _openFullScreen : null,
+              onRestartCamera: hasCapture ? null : _restartCamera,
             ),
             if (!hasCapture && _cameraError == null)
               Positioned(
@@ -394,35 +409,18 @@ class _CaptureScreenState extends State<CaptureScreen>
       );
     }
 
-    // The preview subtree is deliberately IDENTICAL for every aspect ratio.
-    // Restructuring it (wrapping in AspectRatio/ClipRRect when a ratio is
-    // chosen) re-parents the underlying platform view, and on web that orphans
-    // the <video> element permanently -- the preview goes black and does not
-    // come back even when the ratio is set to Full again.
-    //
-    // Framing is therefore drawn as a sibling overlay rather than by resizing
-    // the preview. That is also how camera apps normally show a crop: the
-    // excluded area stays visible but dimmed, so the operator can see what is
-    // about to be cut off.
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        ClipRect(
-          key: const ValueKey('camera-preview'),
-          child: SizedBox.expand(
-            child: FittedBox(
-              fit: BoxFit.cover,
-              child: SizedBox(
-                width: MediaQuery.sizeOf(context).width,
-                height: MediaQuery.sizeOf(context).height,
-                child: CameraPreview(controller),
-              ),
-            ),
-          ),
+    // CameraStage owns the rule that framing must never restructure this
+    // subtree -- see its doc comment for why, and what breaks otherwise.
+    return CameraStage(
+      ratio: _aspect.ratio,
+      preview: FittedBox(
+        fit: BoxFit.cover,
+        child: SizedBox(
+          width: MediaQuery.sizeOf(context).width,
+          height: MediaQuery.sizeOf(context).height,
+          child: CameraPreview(controller),
         ),
-        if (_aspect.cropsFrame)
-          Positioned.fill(child: _FramingMask(ratio: _aspect.ratio!)),
-      ],
+      ),
     );
   }
 
@@ -560,89 +558,20 @@ class _CaptureScreenState extends State<CaptureScreen>
   }
 }
 
-/// Dims everything outside the selected framing.
-///
-/// An overlay rather than a resize: the preview subtree must stay structurally
-/// identical across ratio changes or the web platform view is destroyed.
-class _FramingMask extends StatelessWidget {
-  /// Width divided by height of the region that will survive the crop.
-  final double ratio;
-
-  const _FramingMask({required this.ratio});
-
-  @override
-  Widget build(BuildContext context) {
-    return IgnorePointer(
-      child: CustomPaint(
-        painter: _FramingMaskPainter(
-          ratio: ratio,
-          // Matches the crop the captured image actually receives.
-          scrim: Colors.black.withValues(alpha: 0.55),
-        ),
-      ),
-    );
-  }
-}
-
-class _FramingMaskPainter extends CustomPainter {
-  final double ratio;
-  final Color scrim;
-
-  const _FramingMaskPainter({required this.ratio, required this.scrim});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final frame = _frameRect(size);
-
-    // Punch the frame out of a full-bleed scrim so only the excluded area dims.
-    final overlay = Path.combine(
-      PathOperation.difference,
-      Path()..addRect(Offset.zero & size),
-      Path()..addRRect(
-        RRect.fromRectAndRadius(frame, const Radius.circular(AppTheme.radius)),
-      ),
-    );
-    canvas.drawPath(overlay, Paint()..color = scrim);
-
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(frame, const Radius.circular(AppTheme.radius)),
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.5
-        ..color = Colors.white.withValues(alpha: 0.85),
-    );
-  }
-
-  /// Largest rect of [ratio] that fits inside [size], centred.
-  Rect _frameRect(Size size) {
-    var width = size.width;
-    var height = width / ratio;
-    if (height > size.height) {
-      height = size.height;
-      width = height * ratio;
-    }
-    return Rect.fromCenter(
-      center: Offset(size.width / 2, size.height / 2),
-      width: width,
-      height: height,
-    );
-  }
-
-  @override
-  bool shouldRepaint(covariant _FramingMaskPainter old) =>
-      old.ratio != ratio || old.scrim != scrim;
-}
-
 /// Floating controls along the top edge.
 class _TopBar extends StatelessWidget {
   final VoidCallback onSettings;
   final VoidCallback? onClose;
   final VoidCallback? onFullScreen;
 
+  /// Null while a capture is on screen, where there is no preview to restart.
+  final VoidCallback? onRestartCamera;
+
   const _TopBar({
     required this.onSettings,
     this.onClose,
     this.onFullScreen,
+    this.onRestartCamera,
   });
 
   @override
@@ -680,6 +609,14 @@ class _TopBar extends StatelessWidget {
                     onPressed: onFullScreen!,
                   ),
                 if (onFullScreen != null) const SizedBox(width: 8),
+                if (onRestartCamera != null) ...[
+                  _GlassIconButton(
+                    icon: Icons.cameraswitch_outlined,
+                    tooltip: 'Restart camera',
+                    onPressed: onRestartCamera!,
+                  ),
+                  const SizedBox(width: 8),
+                ],
                 _GlassIconButton(
                   icon: Icons.tune,
                   tooltip: 'Analysis settings',
