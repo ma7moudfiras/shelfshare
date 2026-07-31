@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/company_option.dart';
 import '../models/user_profile.dart';
+import 'auth_storage.dart';
 
 /// Raised when sign-in fails for a reason worth showing the user.
 class AuthFailure implements Exception {
@@ -226,24 +227,24 @@ class SupabaseAuthService implements AuthService {
   @override
   Future<void> signInWithGoogle() async {
     try {
+      if (kIsWeb) {
+        // Build the URL and go there ourselves. signInWithOAuth would do the
+        // same thing but hands the last step to url_launcher, whose plugin is
+        // not reachable in this build -- it threw MissingPluginException and
+        // the browser never left the page, so the button did nothing at all.
+        final oauth = await _client.auth.getOAuthSignInUrl(
+          provider: OAuthProvider.google,
+          redirectTo: Uri.base.origin,
+        );
+        navigateWholePage(oauth.url);
+        return;
+      }
+
       await _client.auth.signInWithOAuth(
         OAuthProvider.google,
-        // On web the browser returns to the app's own origin; on native the
-        // On web, come back to the origin the user actually signed in from.
-        // Passing null instead sends no redirect_to at all, and Supabase then
-        // falls back to the single Site URL configured in its dashboard --
-        // which means signing in from the preview deployment lands you on
-        // production, or on localhost:3000 if nobody changed the default.
-        // Supabase still checks this against its redirect allow-list, so an
-        // origin that is not listed is refused rather than honoured.
-        //
-        // On native the deep link is registered per platform instead.
-        redirectTo: kIsWeb
-            ? Uri.base.origin
-            : 'io.supabase.shelfmonitor://login-callback/',
-        authScreenLaunchMode: kIsWeb
-            ? LaunchMode.platformDefault
-            : LaunchMode.externalApplication,
+        // Native returns through a deep link registered per platform.
+        redirectTo: 'io.supabase.shelfmonitor://login-callback/',
+        authScreenLaunchMode: LaunchMode.externalApplication,
       );
     } on AuthException catch (e) {
       throw AuthFailure(_friendly(e));

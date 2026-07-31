@@ -41,6 +41,11 @@ dependencies:
   image: ^4.9.1
   supabase_flutter: ^2.16.0
 
+  # Browser storage for the Supabase session and PKCE verifier, used only by
+  # lib/services/auth_storage_web.dart. See that file for why the plugin-backed
+  # default is not usable here.
+  web: ^1.1.1
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

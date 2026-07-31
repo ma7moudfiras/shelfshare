@@ -5,6 +5,7 @@ import 'config/app_config.dart';
 import 'screens/auth_gate.dart';
 import 'screens/backend_missing_screen.dart';
 import 'services/admin_service.dart';
+import 'services/auth_storage.dart';
 import 'services/auth_service.dart';
 import 'services/detection_service.dart';
 import 'services/roboflow_service.dart';
@@ -53,6 +54,9 @@ Future<BackendStatus> _initialiseBackend() async {
     await Supabase.initialize(
       url: AppConfig.supabaseUrl!,
       publishableKey: AppConfig.supabasePublishableKey!,
+      // Not cosmetic: the defaults here are backed by a plugin that is not
+      // registered in our web build. See authClientOptions().
+      authOptions: authClientOptions(),
     ).timeout(const Duration(seconds: 10));
     return BackendStatus.ready;
   } catch (error) {
