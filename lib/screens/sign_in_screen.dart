@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../services/auth_service.dart';
 import '../theme/app_theme.dart';
@@ -40,7 +41,10 @@ class _SignInScreenState extends State<SignInScreen> {
   }
 
   /// Runs [action] with the busy state and error handling every path needs.
-  Future<void> _run(Future<void> Function() action, {String? successNotice}) async {
+  Future<void> _run(
+    Future<void> Function() action, {
+    String? successNotice,
+  }) async {
     if (_isBusy) return;
     setState(() {
       _isBusy = true;
@@ -71,6 +75,13 @@ class _SignInScreenState extends State<SignInScreen> {
         password: _password.text,
       ),
     );
+
+    // Tells the platform the credentials were accepted, which is what makes
+    // Safari and iOS offer to remember them. Without it nothing is ever
+    // saved, so every sign-in is another round of typing into fields that are
+    // awkward to type into. Only on success: offering to save a password that
+    // was just rejected would be worse than not offering at all.
+    if (mounted && _error == null) TextInput.finishAutofillContext();
   }
 
   /// Also the first-time path for an account an admin created: the person sets
@@ -101,164 +112,175 @@ class _SignInScreenState extends State<SignInScreen> {
               // Keeps the form readable on a desktop browser instead of
               // stretching a single column across 1600px.
               constraints: const BoxConstraints(maxWidth: 420),
-              child: Form(
-                key: _formKey,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Icon(
-                      Icons.inventory_2_outlined,
-                      size: 44,
-                      color: theme.colorScheme.primary,
-                    ),
-                    const SizedBox(height: 18),
-                    Text(
-                      'Shelf Monitor',
-                      textAlign: TextAlign.center,
-                      style: theme.textTheme.headlineSmall?.copyWith(
-                        fontWeight: FontWeight.w600,
-                        letterSpacing: -0.5,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      'Sign in to record and review shelf data',
-                      textAlign: TextAlign.center,
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                    const SizedBox(height: 32),
-
-                    TextFormField(
-                      controller: _email,
-                      keyboardType: TextInputType.emailAddress,
-                      autofillHints: const [AutofillHints.email],
-                      textInputAction: TextInputAction.next,
-                      decoration: const InputDecoration(
-                        labelText: 'Email',
-                        prefixIcon: Icon(Icons.mail_outline),
-                        border: OutlineInputBorder(),
-                      ),
-                      validator: (v) {
-                        final value = v?.trim() ?? '';
-                        if (value.isEmpty) return 'Enter your email';
-                        if (!value.contains('@') || !value.contains('.')) {
-                          return 'That does not look like an email address';
-                        }
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: 14),
-
-                    TextFormField(
-                      controller: _password,
-                      obscureText: _obscurePassword,
-                      autofillHints: const [AutofillHints.password],
-                      textInputAction: TextInputAction.done,
-                      onFieldSubmitted: (_) => _submitEmail(),
-                      decoration: InputDecoration(
-                        labelText: 'Password',
-                        prefixIcon: const Icon(Icons.lock_outline),
-                        border: const OutlineInputBorder(),
-                        suffixIcon: IconButton(
-                          onPressed: () => setState(
-                            () => _obscurePassword = !_obscurePassword,
-                          ),
-                          icon: Icon(
-                            _obscurePassword
-                                ? Icons.visibility_outlined
-                                : Icons.visibility_off_outlined,
-                          ),
-                          tooltip: _obscurePassword ? 'Show' : 'Hide',
-                        ),
-                      ),
-                      validator: (v) =>
-                          (v ?? '').isEmpty ? 'Enter your password' : null,
-                    ),
-
-                    if (_error != null) ...[
-                      const SizedBox(height: 16),
-                      _Banner(
-                        icon: Icons.error_outline,
-                        text: _error!,
-                        color: theme.colorScheme.error,
-                      ),
-                    ],
-                    if (_notice != null) ...[
-                      const SizedBox(height: 16),
-                      _Banner(
-                        icon: Icons.check_circle_outline,
-                        text: _notice!,
+              // Without an AutofillGroup the hints on the fields below do
+              // nothing: iOS and Safari only offer to fill a set of fields
+              // they have been told belong together. That matters more here
+              // than it looks -- Flutter draws text fields on a canvas with a
+              // hidden input behind them, so Safari's own paste and selection
+              // menus are unreliable inside them. AutoFill is the one route
+              // into these fields that does not depend on that working.
+              child: AutofillGroup(
+                child: Form(
+                  key: _formKey,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Icon(
+                        Icons.inventory_2_outlined,
+                        size: 44,
                         color: theme.colorScheme.primary,
                       ),
-                    ],
-
-                    const SizedBox(height: 22),
-                    FilledButton(
-                      onPressed: _isBusy ? null : _submitEmail,
-                      child: _isBusy
-                          ? const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(strokeWidth: 2.4),
-                            )
-                          : const Text('Sign in'),
-                    ),
-                    const SizedBox(height: 6),
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: TextButton(
-                        onPressed: _isBusy ? null : _resetPassword,
-                        child: const Text('Set or reset password'),
+                      const SizedBox(height: 18),
+                      Text(
+                        'Shelf Monitor',
+                        textAlign: TextAlign.center,
+                        style: theme.textTheme.headlineSmall?.copyWith(
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: -0.5,
+                        ),
                       ),
-                    ),
+                      const SizedBox(height: 6),
+                      Text(
+                        'Sign in to record and review shelf data',
+                        textAlign: TextAlign.center,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                      const SizedBox(height: 32),
 
-                    const SizedBox(height: 20),
-                    Row(
-                      children: [
-                        const Expanded(child: Divider()),
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 12),
-                          child: Text(
-                            'or',
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: theme.colorScheme.onSurfaceVariant,
+                      TextFormField(
+                        controller: _email,
+                        keyboardType: TextInputType.emailAddress,
+                        autofillHints: const [AutofillHints.email],
+                        textInputAction: TextInputAction.next,
+                        decoration: const InputDecoration(
+                          labelText: 'Email',
+                          prefixIcon: Icon(Icons.mail_outline),
+                          border: OutlineInputBorder(),
+                        ),
+                        validator: (v) {
+                          final value = v?.trim() ?? '';
+                          if (value.isEmpty) return 'Enter your email';
+                          if (!value.contains('@') || !value.contains('.')) {
+                            return 'That does not look like an email address';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 14),
+
+                      TextFormField(
+                        controller: _password,
+                        obscureText: _obscurePassword,
+                        autofillHints: const [AutofillHints.password],
+                        textInputAction: TextInputAction.done,
+                        onFieldSubmitted: (_) => _submitEmail(),
+                        decoration: InputDecoration(
+                          labelText: 'Password',
+                          prefixIcon: const Icon(Icons.lock_outline),
+                          border: const OutlineInputBorder(),
+                          suffixIcon: IconButton(
+                            onPressed: () => setState(
+                              () => _obscurePassword = !_obscurePassword,
+                            ),
+                            icon: Icon(
+                              _obscurePassword
+                                  ? Icons.visibility_outlined
+                                  : Icons.visibility_off_outlined,
+                            ),
+                            tooltip: _obscurePassword ? 'Show' : 'Hide',
+                          ),
+                        ),
+                        validator: (v) =>
+                            (v ?? '').isEmpty ? 'Enter your password' : null,
+                      ),
+
+                      if (_error != null) ...[
+                        const SizedBox(height: 16),
+                        _Banner(
+                          icon: Icons.error_outline,
+                          text: _error!,
+                          color: theme.colorScheme.error,
+                        ),
+                      ],
+                      if (_notice != null) ...[
+                        const SizedBox(height: 16),
+                        _Banner(
+                          icon: Icons.check_circle_outline,
+                          text: _notice!,
+                          color: theme.colorScheme.primary,
+                        ),
+                      ],
+
+                      const SizedBox(height: 22),
+                      FilledButton(
+                        onPressed: _isBusy ? null : _submitEmail,
+                        child: _isBusy
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2.4,
+                                ),
+                              )
+                            : const Text('Sign in'),
+                      ),
+                      const SizedBox(height: 6),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: TextButton(
+                          onPressed: _isBusy ? null : _resetPassword,
+                          child: const Text('Set or reset password'),
+                        ),
+                      ),
+
+                      const SizedBox(height: 20),
+                      Row(
+                        children: [
+                          const Expanded(child: Divider()),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                            child: Text(
+                              'or',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ),
+                          const Expanded(child: Divider()),
+                        ],
+                      ),
+                      const SizedBox(height: 20),
+
+                      OutlinedButton.icon(
+                        onPressed: _isBusy
+                            ? null
+                            : () => _run(widget.authService.signInWithGoogle),
+                        icon: const Icon(Icons.g_mobiledata, size: 26),
+                        label: const Text('Continue with Google'),
+                        style: OutlinedButton.styleFrom(
+                          minimumSize: const Size.fromHeight(48),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(
+                              AppTheme.radiusSmall,
                             ),
                           ),
                         ),
-                        const Expanded(child: Divider()),
-                      ],
-                    ),
-                    const SizedBox(height: 20),
+                      ),
 
-                    OutlinedButton.icon(
-                      onPressed: _isBusy
-                          ? null
-                          : () => _run(widget.authService.signInWithGoogle),
-                      icon: const Icon(Icons.g_mobiledata, size: 26),
-                      label: const Text('Continue with Google'),
-                      style: OutlinedButton.styleFrom(
-                        minimumSize: const Size.fromHeight(48),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(
-                            AppTheme.radiusSmall,
-                          ),
+                      const SizedBox(height: 24),
+                      Text(
+                        'Accounts are created by your administrator. If you '
+                        'cannot sign in, ask them to add you.',
+                        textAlign: TextAlign.center,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                          height: 1.4,
                         ),
                       ),
-                    ),
-
-                    const SizedBox(height: 24),
-                    Text(
-                      'Accounts are created by your administrator. If you '
-                      'cannot sign in, ask them to add you.',
-                      textAlign: TextAlign.center,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
-                        height: 1.4,
-                      ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),

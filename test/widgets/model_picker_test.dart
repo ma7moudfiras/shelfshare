@@ -123,11 +123,22 @@ void main() {
       expect(CaptureAspectRatio.sixteenNine.cropsFrame, isTrue);
     });
 
-    test('ratios are portrait-first', () {
-      // The capture screen is portrait, so 4:3 means 3 wide by 4 tall.
+    test('orientation follows what each ratio is for', () {
       expect(CaptureAspectRatio.square.ratio, 1.0);
-      expect(CaptureAspectRatio.fourThree.ratio, closeTo(0.75, 1e-9));
-      expect(CaptureAspectRatio.sixteenNine.ratio, closeTo(0.5625, 1e-9));
+
+      // 4:3 frames a fridge or a single bay, which are taller than wide.
+      expect(CaptureAspectRatio.fourThree.ratio, closeTo(3 / 4, 1e-9));
+      expect(CaptureAspectRatio.fourThree.ratio, lessThan(1));
+
+      // 16:9 exists for a long horizontal run of shelving, so it must be
+      // wide. It used to be 9/16, which made the widest-sounding option
+      // produce the narrowest crop.
+      expect(CaptureAspectRatio.sixteenNine.ratio, closeTo(16 / 9, 1e-9));
+      expect(
+        CaptureAspectRatio.sixteenNine.ratio,
+        greaterThan(1),
+        reason: '16:9 must be landscape',
+      );
     });
 
     test('full falls back to the supplied ratio for layout', () {

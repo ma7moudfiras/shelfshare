@@ -11,11 +11,11 @@ enum CaptureAspectRatio {
   /// Square. Useful for a single shelf section.
   square(label: '1:1', ratio: 1.0),
 
-  /// Classic photo framing, portrait-oriented for tall shelf bays.
+  /// Classic photo framing, kept portrait for tall shelf bays and fridges.
   fourThree(label: '4:3', ratio: 3 / 4),
 
   /// Wide, for capturing a long run of shelving in one shot.
-  sixteenNine(label: '16:9', ratio: 9 / 16);
+  sixteenNine(label: '16:9', ratio: 16 / 9);
 
   const CaptureAspectRatio({required this.label, required this.ratio});
 
@@ -24,8 +24,12 @@ enum CaptureAspectRatio {
 
   /// Width divided by height, or null to leave the frame uncropped.
   ///
-  /// Values are expressed portrait-first because the capture screen is
-  /// portrait: `4:3` here means 3 wide by 4 tall.
+  /// Orientation follows what the shelf looks like, not one blanket rule.
+  /// `4:3` is 3 wide by 4 tall, because the things it frames -- a fridge, a
+  /// single bay -- are taller than they are wide. `16:9` is 16 wide by 9 tall,
+  /// because it exists for a long horizontal run of shelving. It was
+  /// previously 9 by 16, which contradicted its own purpose: the widest
+  /// option produced the narrowest crop.
   final double? ratio;
 
   bool get cropsFrame => ratio != null;
