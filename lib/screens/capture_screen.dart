@@ -2,7 +2,10 @@ import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../config/app_config.dart';
 import '../models/capture_aspect_ratio.dart';
+import '../models/capture_draft.dart';
+import '../models/capture_target.dart';
 import '../models/detection_result.dart';
 import '../models/model_option.dart';
 import '../services/camera_service.dart';
@@ -10,7 +13,9 @@ import '../services/detection_exception.dart';
 import '../services/detection_service.dart';
 import '../services/image_processor.dart';
 import '../services/model_catalog_service.dart';
+import '../services/visit_service.dart';
 import '../theme/app_theme.dart';
+import 'capture_review_screen.dart';
 import '../widgets/analysis_settings_sheet.dart';
 import '../widgets/aspect_ratio_selector.dart';
 import '../widgets/camera_stage.dart';
@@ -34,12 +39,25 @@ class CaptureScreen extends StatefulWidget {
   /// real JPEG work, which is far too slow to complete inside a pumped frame.
   final ImageProcessor? imageProcessor;
 
+  /// What this capture is being recorded against.
+  ///
+  /// Null puts the screen in preview mode: it analyses and displays, and saves
+  /// nothing. That is the right behaviour for an admin trying the camera out
+  /// from the dashboard, who has no open visit and whose test shots must not
+  /// land in a customer's numbers.
+  final CaptureTarget? target;
+
+  /// Required whenever [target] is set.
+  final VisitService? visitService;
+
   const CaptureScreen({
     super.key,
     this.detectionService,
     this.cameraService,
     this.catalogService,
     this.imageProcessor,
+    this.target,
+    this.visitService,
   });
 
   @override
@@ -271,6 +289,62 @@ class _CaptureScreenState extends State<CaptureScreen>
     if (needsReanalysis && _capturedBytes != null) await _analyze();
   }
 
+  /// Opens the review screen, where the count can be corrected before it is
+  /// stored, and writes the capture when the rep accepts it.
+  Future<void> _openReview() async {
+    final target = widget.target;
+    final service = widget.visitService;
+    final bytes = _capturedBytes;
+    final result = _visibleResult;
+    if (target == null || service == null || bytes == null || result == null) {
+      return;
+    }
+
+    final saved = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (reviewContext) => CaptureReviewScreen(
+          imageBytes: bytes,
+          initialDraft: CaptureDraft.fromResult(result),
+          targetLabel: target.label,
+          availableClasses: _classChoices,
+          onSave: (draft) async {
+            try {
+              await service.recordCapture(
+                visitId: target.visitId,
+                companyId: target.companyId,
+                fridgeId: target.fridge.id,
+                fridgeSectionId: target.sectionId,
+                // What actually ran, which the web proxy is free to override.
+                modelId:
+                    result.effectiveModelId ??
+                    _settings.modelId ??
+                    AppConfig.modelId,
+                confidenceThreshold: _settings.confidence,
+                draft: draft,
+              );
+              if (reviewContext.mounted) {
+                Navigator.of(reviewContext).pop(true);
+              }
+            } on VisitFailure catch (e) {
+              if (!reviewContext.mounted) return;
+              ScaffoldMessenger.of(reviewContext)
+                ..hideCurrentSnackBar()
+                ..showSnackBar(
+                  SnackBar(
+                    content: Text(e.message),
+                    backgroundColor: Theme.of(reviewContext).colorScheme.error,
+                  ),
+                );
+            }
+          },
+        ),
+      ),
+    );
+
+    // Hand the result back to the fridge list so it can mark this one done.
+    if ((saved ?? false) && mounted) Navigator.of(context).pop(true);
+  }
+
   void _openFullScreen() {
     final bytes = _capturedBytes;
     if (bytes == null) return;
@@ -301,14 +375,18 @@ class _CaptureScreenState extends State<CaptureScreen>
 
   /// Tears the preview down and brings it back up.
   ///
-  /// A browser can leave a camera stream dead while the controller still
-  /// reports it as running, and nothing in the app can detect that -- the
-  /// preview is a platform view we do not get to inspect. Rather than leave the
-  /// operator staring at a black rectangle with no way out, this is exposed as
-  /// a button they can always reach.
+  /// Reached from the camera error state rather than from a permanent button in
+  /// the chrome. A browser can also leave a stream dead while the controller
+  /// still reports it as running, which this would fix but nothing can detect
+  /// -- the preview is a platform view we do not get to inspect.
   Future<void> _restartCamera() async {
     _cameraService.dispose();
-    if (mounted) setState(() => _isCameraReady = false);
+    if (mounted) {
+      setState(() {
+        _isCameraReady = false;
+        _cameraError = null;
+      });
+    }
     await _initializeCamera();
   }
 
@@ -343,7 +421,12 @@ class _CaptureScreenState extends State<CaptureScreen>
               onSettings: _openSettings,
               onClose: hasCapture ? _reset : null,
               onFullScreen: hasCapture ? _openFullScreen : null,
-              onRestartCamera: hasCapture ? null : _restartCamera,
+              // Only when there is somewhere to go back to. A sales rep who
+              // lands straight on this screen has no dashboard behind it, and
+              // an arrow that pops to a blank route is worse than no arrow.
+              onBack: Navigator.of(context).canPop()
+                  ? () => Navigator.of(context).maybePop()
+                  : null,
             ),
             if (!hasCapture && _cameraError == null)
               Positioned(
@@ -511,6 +594,26 @@ class _CaptureScreenState extends State<CaptureScreen>
                   scrollController: scrollController,
                 ),
               ),
+              // Only when there is somewhere to record this. Without a target
+              // the screen is a preview and there is nothing to save into.
+              if (widget.target != null &&
+                  _result != null &&
+                  !_isAnalyzing &&
+                  _errorMessage == null)
+                SafeArea(
+                  top: false,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
+                    child: SizedBox(
+                      width: double.infinity,
+                      child: FilledButton.icon(
+                        onPressed: _openReview,
+                        icon: const Icon(Icons.fact_check_outlined, size: 18),
+                        label: const Text('Check the count'),
+                      ),
+                    ),
+                  ),
+                ),
             ],
           ),
         );
@@ -545,10 +648,22 @@ class _CaptureScreenState extends State<CaptureScreen>
                 ),
               ),
               const SizedBox(height: 20),
-              FilledButton.tonalIcon(
-                onPressed: _onPickFromGallery,
-                icon: const Icon(Icons.photo_library_outlined, size: 18),
-                label: const Text('Choose a photo'),
+              Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                alignment: WrapAlignment.center,
+                children: [
+                  FilledButton.icon(
+                    onPressed: _restartCamera,
+                    icon: const Icon(Icons.refresh, size: 18),
+                    label: const Text('Try camera again'),
+                  ),
+                  FilledButton.tonalIcon(
+                    onPressed: _onPickFromGallery,
+                    icon: const Icon(Icons.photo_library_outlined, size: 18),
+                    label: const Text('Choose a photo'),
+                  ),
+                ],
               ),
             ],
           ),
@@ -564,14 +679,14 @@ class _TopBar extends StatelessWidget {
   final VoidCallback? onClose;
   final VoidCallback? onFullScreen;
 
-  /// Null while a capture is on screen, where there is no preview to restart.
-  final VoidCallback? onRestartCamera;
+  /// Null when this screen is the root and there is nothing behind it.
+  final VoidCallback? onBack;
 
   const _TopBar({
     required this.onSettings,
     this.onClose,
     this.onFullScreen,
-    this.onRestartCamera,
+    this.onBack,
   });
 
   @override
@@ -589,31 +704,35 @@ class _TopBar extends StatelessWidget {
         child: SafeArea(
           bottom: false,
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 6, 6, 20),
+            padding: EdgeInsets.fromLTRB(onBack != null ? 6 : 16, 6, 6, 20),
             child: Row(
               children: [
-                const Text(
-                  'Shelf Monitor',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 17,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: -0.2,
+                if (onBack != null) ...[
+                  _GlassIconButton(
+                    icon: Icons.arrow_back,
+                    tooltip: 'Back',
+                    onPressed: onBack!,
+                  ),
+                  const SizedBox(width: 10),
+                ],
+                const Flexible(
+                  child: Text(
+                    'Shelf Monitor',
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 17,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: -0.2,
+                    ),
                   ),
                 ),
                 const Spacer(),
-                if (onFullScreen != null)
+                if (onFullScreen != null) ...[
                   _GlassIconButton(
                     icon: Icons.fullscreen,
                     tooltip: 'View full screen',
                     onPressed: onFullScreen!,
-                  ),
-                if (onFullScreen != null) const SizedBox(width: 8),
-                if (onRestartCamera != null) ...[
-                  _GlassIconButton(
-                    icon: Icons.cameraswitch_outlined,
-                    tooltip: 'Restart camera',
-                    onPressed: onRestartCamera!,
                   ),
                   const SizedBox(width: 8),
                 ],

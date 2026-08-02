@@ -11,6 +11,7 @@ import 'package:shelf_monitor/screens/pending_screen.dart';
 import 'package:shelf_monitor/screens/sign_in_screen.dart';
 import 'package:shelf_monitor/services/auth_service.dart';
 
+import '../support/fake_services.dart';
 import 'admin_dashboard_screen_test.dart' show FakeAdminService;
 
 class FakeAuthService implements AuthService {
@@ -101,9 +102,11 @@ Future<void> pumpGate(WidgetTester tester, FakeAuthService auth) async {
     MaterialApp(
       home: AuthGate(
         authService: auth,
-        // Admin routes render a real dashboard, which needs a service. A fake
-        // keeps the gate's routing testable without a database.
+        // Admin and rep routes render real screens, which need services. Fakes
+        // keep the gate's routing testable without a database.
         adminService: FakeAdminService(),
+        marketService: FakeMarketService(),
+        visitService: FakeVisitService(),
       ),
     ),
   );

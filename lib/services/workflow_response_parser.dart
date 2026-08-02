@@ -55,6 +55,7 @@ class WorkflowResponseParser {
     double fallbackWidth = 0,
     double fallbackHeight = 0,
     Duration? inferenceTime,
+    String? effectiveModelId,
   }) {
     final Object? decoded;
     try {
@@ -111,6 +112,7 @@ class WorkflowResponseParser {
       annotatedImage: annotatedImage,
       sourceOutputKey: sourceKey,
       inferenceTime: inferenceTime,
+      effectiveModelId: effectiveModelId,
     );
   }
 

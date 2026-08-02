@@ -89,6 +89,48 @@ void main() {
     );
   });
 
+  group('the framing outline', () {
+    const size = Size(400, 800);
+
+    List<({Rect rect, Paint paint})> drawsFor(double? ratio) {
+      final canvas = _RecordingCanvas();
+      FramingMaskPainter(ratio: ratio, scrim: Colors.black).paint(canvas, size);
+      return canvas.rects;
+    }
+
+    ({Rect rect, Paint paint}) outlineFor(double? ratio) => drawsFor(
+      ratio,
+    ).singleWhere((d) => d.paint.style == PaintingStyle.stroke);
+
+    // Full fills the screen, so an outline would trace the edge of the viewport
+    // and read as a rendering fault rather than as framing guidance.
+    test('Full draws no visible outline', () {
+      expect(outlineFor(null).paint.color.a, 0);
+    });
+
+    test('a cropped ratio still outlines what will survive the crop', () {
+      for (final ratio in [1.0, 3 / 4, 16 / 9]) {
+        expect(outlineFor(ratio).paint.color.a, greaterThan(0), reason: '$ratio');
+      }
+    });
+
+    // The invisible outline must remain a real draw call. Skipping it would
+    // change how many operations this layer holds, and that is precisely what
+    // re-slots the preview's DOM element on web -- the bug the whole
+    // CameraStage contract exists to prevent.
+    test('every ratio issues the same outline draw, visible or not', () {
+      final strokeCounts = <int>{
+        for (final ratio in <double?>[null, 1.0, 3 / 4, 16 / 9])
+          drawsFor(ratio).where((d) => d.paint.style == PaintingStyle.stroke).length,
+      };
+      expect(strokeCounts, {1});
+    });
+
+    test('Full dims nothing, so the outline is its only draw', () {
+      expect(drawsFor(null), hasLength(1));
+    });
+  });
+
   group('FramingMaskPainter', () {
     const size = Size(400, 800);
     Rect frameFor(double? ratio) =>
@@ -162,4 +204,19 @@ void main() {
       expect(frame.height, greaterThan(0), reason: aspect.label);
     }
   });
+}
+
+/// Captures the rectangles a painter draws, so the outline's colour and the
+/// number of draw calls can be asserted directly.
+///
+/// [Canvas] is a large interface and the painter touches one method of it, so
+/// everything else falls through to [noSuchMethod] rather than being stubbed.
+class _RecordingCanvas implements Canvas {
+  final List<({Rect rect, Paint paint})> rects = [];
+
+  @override
+  void drawRect(Rect rect, Paint paint) => rects.add((rect: rect, paint: paint));
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => null;
 }

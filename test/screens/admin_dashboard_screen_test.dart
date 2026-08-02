@@ -5,6 +5,7 @@ import 'package:shelf_monitor/models/user_profile.dart';
 import 'package:shelf_monitor/screens/admin_dashboard_screen.dart';
 import 'package:shelf_monitor/services/admin_service.dart';
 
+import '../support/fake_services.dart';
 import 'auth_gate_test.dart' show FakeAuthService;
 
 class FakeAdminService implements AdminService {
@@ -107,6 +108,7 @@ void main() {
     WidgetTester tester, {
     required UserProfile admin,
     FakeAdminService? service,
+    FakeMarketService? markets,
   }) async {
     final adminService = service ?? FakeAdminService();
     await tester.pumpWidget(
@@ -115,6 +117,7 @@ void main() {
           profile: admin,
           authService: FakeAuthService(),
           adminService: adminService,
+          marketService: markets ?? FakeMarketService(),
         ),
       ),
     );

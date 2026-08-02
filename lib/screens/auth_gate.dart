@@ -4,10 +4,12 @@ import '../models/user_profile.dart';
 import '../services/admin_service.dart';
 import '../services/auth_service.dart';
 import '../services/detection_service.dart';
+import '../services/market_service.dart';
+import '../services/visit_service.dart';
 import 'admin_dashboard_screen.dart';
-import 'capture_screen.dart';
 import 'company_request_screen.dart';
 import 'pending_screen.dart';
+import 'rep_home_screen.dart';
 import 'sign_in_screen.dart';
 
 /// Decides what a user sees based on who they are.
@@ -19,15 +21,19 @@ class AuthGate extends StatelessWidget {
   final AuthService authService;
   final DetectionService? detectionService;
 
-  /// Supplied by [main]. Nullable only so tests can omit it when the route
+  /// Supplied by [main]. Nullable only so tests can omit them when the route
   /// under test never reaches a dashboard.
   final AdminService? adminService;
+  final MarketService? marketService;
+  final VisitService? visitService;
 
   const AuthGate({
     super.key,
     required this.authService,
     this.detectionService,
     this.adminService,
+    this.marketService,
+    this.visitService,
   });
 
   @override
@@ -60,25 +66,38 @@ class AuthGate extends StatelessWidget {
         }
 
         final admin = adminService;
+        final markets = marketService;
+        final visits = visitService;
 
         return switch (profile.role) {
-          // Reps go straight to the camera: their job is capture, and every
-          // extra screen between them and the shutter costs a visit.
-          UserRole.salesRep => CaptureScreen(detectionService: detectionService),
+          // Reps used to land straight on the camera, on the reasoning that
+          // every screen between them and the shutter costs a visit. It also
+          // cost the data: a photo with no market, fridge or visit attached
+          // cannot be stored. Choosing where you are comes first now.
+          UserRole.salesRep when visits != null => RepHomeScreen(
+            profile: profile,
+            authService: authService,
+            visitService: visits,
+            detectionService: detectionService,
+          ),
 
           // Both admin roles share one dashboard. What they can see differs,
           // but Row Level Security decides that, not this switch.
-          UserRole.companyAdmin || UserRole.platformAdmin when admin != null =>
+          UserRole.companyAdmin ||
+          UserRole.platformAdmin when admin != null && markets != null =>
             AdminDashboardScreen(
               profile: profile,
               authService: authService,
               adminService: admin,
+              marketService: markets,
               detectionService: detectionService,
             ),
 
-          // Only reachable if the app was built without an admin service,
-          // which main() does not do once the backend is up.
-          UserRole.companyAdmin || UserRole.platformAdmin => const _Splash(),
+          // Only reachable if the app was built without those services, which
+          // main() does not do once the backend is up.
+          UserRole.salesRep ||
+          UserRole.companyAdmin ||
+          UserRole.platformAdmin => const _Splash(),
 
           UserRole.pending => PendingScreen(
             profile: profile,
