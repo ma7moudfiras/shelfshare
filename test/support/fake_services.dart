@@ -14,7 +14,8 @@ class FakeMarketService implements MarketService {
   String? failWith;
 
   final createdMarkets = <({String companyId, String name, String city})>[];
-  final createdFridges = <({String pointOfSaleId, String name, int sections})>[];
+  final createdFridges =
+      <({String pointOfSaleId, String name, int sections})>[];
   final assignments = <({String profileId, String posId, bool assigned})>[];
 
   FakeMarketService({
@@ -123,7 +124,15 @@ class FakeVisitService implements VisitService {
   var startedVisits = 0;
   final submitted = <String>[];
   final captures =
-      <({String visitId, String fridgeId, String? sectionId, CaptureDraft draft, String modelId})>[];
+      <
+        ({
+          String visitId,
+          String fridgeId,
+          String? sectionId,
+          CaptureDraft draft,
+          String modelId,
+        })
+      >[];
 
   FakeVisitService({this.marketList = const [], this.fridgeList = const []});
 

@@ -299,17 +299,20 @@ class RoboflowService implements DetectionService {
 
   String _messageForStatus(int status) {
     return switch (status) {
-      400 => 'Roboflow rejected the request. The workflow parameters may not '
-          'match its current definition.',
-      401 || 403 => useProxy
-          ? 'The detection proxy rejected the request. Check ROBOFLOW_API_KEY '
-                'in the server environment.'
-          : 'Roboflow rejected the API key. Check ROBOFLOW_API_KEY in your '
-                '.env.',
-      404 => useProxy
-          ? 'Detection proxy not found at $endpoint.'
-          : 'Workflow not found. Check ROBOFLOW_WORKSPACE and '
-                'ROBOFLOW_WORKFLOW_ID in your .env.',
+      400 =>
+        'Roboflow rejected the request. The workflow parameters may not '
+            'match its current definition.',
+      401 || 403 =>
+        useProxy
+            ? 'The detection proxy rejected the request. Check ROBOFLOW_API_KEY '
+                  'in the server environment.'
+            : 'Roboflow rejected the API key. Check ROBOFLOW_API_KEY in your '
+                  '.env.',
+      404 =>
+        useProxy
+            ? 'Detection proxy not found at $endpoint.'
+            : 'Workflow not found. Check ROBOFLOW_WORKSPACE and '
+                  'ROBOFLOW_WORKFLOW_ID in your .env.',
       413 =>
         'The captured image was too large to send. Try a tighter aspect '
             'ratio, or retake the photo.',

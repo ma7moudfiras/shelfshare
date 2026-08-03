@@ -127,10 +127,10 @@ class SupabaseAdminService implements AdminService {
 
   @override
   Future<void> setActive(String userId, bool isActive) => _guard(
-    () => _client.from('profiles').update({'is_active': isActive}).eq(
-      'id',
-      userId,
-    ),
+    () => _client
+        .from('profiles')
+        .update({'is_active': isActive})
+        .eq('id', userId),
     'Could not change that account.',
   );
 

@@ -81,7 +81,8 @@ class CaptureDraft {
   /// Starts a draft from what the model returned, with nothing yet corrected.
   factory CaptureDraft.fromResult(DetectionResult result) => CaptureDraft(
     entries: [
-      for (final detection in result.detections) DraftDetection(detection: detection),
+      for (final detection in result.detections)
+        DraftDetection(detection: detection),
     ],
     imageWidth: result.imageWidth,
     imageHeight: result.imageHeight,

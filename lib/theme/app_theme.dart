@@ -111,20 +111,14 @@ class AppTheme {
         style: FilledButton.styleFrom(
           minimumSize: _buttonMinimumSize,
           shape: smallShape,
-          textStyle: const TextStyle(
-            fontWeight: FontWeight.w600,
-            fontSize: 15,
-          ),
+          textStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
         ),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
           minimumSize: _buttonMinimumSize,
           shape: smallShape,
-          textStyle: const TextStyle(
-            fontWeight: FontWeight.w600,
-            fontSize: 15,
-          ),
+          textStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
         ),
       ),
       textButtonTheme: TextButtonThemeData(
@@ -155,9 +149,7 @@ class AppTheme {
         selectedColor: scheme.primaryContainer,
         disabledColor: scheme.surfaceContainerHigh.withValues(alpha: 0.5),
         checkmarkColor: scheme.onPrimaryContainer,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(999),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
         side: BorderSide.none,
         showCheckmark: false,
         labelStyle: TextStyle(

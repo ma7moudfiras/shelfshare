@@ -89,9 +89,7 @@ class _ShutterButton extends StatelessWidget {
           decoration: BoxDecoration(
             shape: BoxShape.circle,
             border: Border.all(
-              color: enabled
-                  ? theme.colorScheme.primary
-                  : theme.disabledColor,
+              color: enabled ? theme.colorScheme.primary : theme.disabledColor,
               width: 3,
             ),
           ),

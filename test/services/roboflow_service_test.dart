@@ -147,17 +147,22 @@ ROBOFLOW_BASE_URL=https://serverless.roboflow.com
   });
 
   group('model selection', () {
-    test('defaults to the newest trained model, not the workflow default', () async {
-      final (service, captured) = serviceReplaying(fixture.readAsStringSync());
+    test(
+      'defaults to the newest trained model, not the workflow default',
+      () async {
+        final (service, captured) = serviceReplaying(
+          fixture.readAsStringSync(),
+        );
 
-      await service.detectProducts(sampleBytes);
+        await service.detectProducts(sampleBytes);
 
-      // The workflow itself declares aystro-project/1, trained on 27 images
-      // before most classes existed. Shipping that default is what made only
-      // coca-cola appear.
-      final body = jsonDecode(captured.single.body) as Map<String, dynamic>;
-      expect((body['inputs'] as Map)['model_id'], 'aystro-project/11');
-    });
+        // The workflow itself declares aystro-project/1, trained on 27 images
+        // before most classes existed. Shipping that default is what made only
+        // coca-cola appear.
+        final body = jsonDecode(captured.single.body) as Map<String, dynamic>;
+        expect((body['inputs'] as Map)['model_id'], 'aystro-project/11');
+      },
+    );
 
     test('honours ROBOFLOW_MODEL_ID from the environment', () async {
       dotenv.loadFromString(
@@ -238,21 +243,24 @@ ROBOFLOW_MODEL_ID=aystro-project/9
       expect(result.imageWidth, 720);
     });
 
-    test('falls back to the source image size when dimensions are null', () async {
-      // Roboflow reports image: {width: null, height: null} when nothing is
-      // detected. Boxes cannot be projected without dimensions, so the service
-      // decodes them from the captured bytes instead.
-      final (service, _) = serviceReplaying(
-        File('test/fixtures/workflow_response_empty.json').readAsStringSync(),
-      );
+    test(
+      'falls back to the source image size when dimensions are null',
+      () async {
+        // Roboflow reports image: {width: null, height: null} when nothing is
+        // detected. Boxes cannot be projected without dimensions, so the service
+        // decodes them from the captured bytes instead.
+        final (service, _) = serviceReplaying(
+          File('test/fixtures/workflow_response_empty.json').readAsStringSync(),
+        );
 
-      final result = await service.detectProducts(sampleBytes);
+        final result = await service.detectProducts(sampleBytes);
 
-      expect(result.isEmpty, isTrue);
-      // sample_shelf.jpg is 720x540.
-      expect(result.imageWidth, 720);
-      expect(result.imageHeight, 540);
-    });
+        expect(result.isEmpty, isTrue);
+        // sample_shelf.jpg is 720x540.
+        expect(result.imageWidth, 720);
+        expect(result.imageHeight, 540);
+      },
+    );
   });
 
   group('proxy mode', () {
@@ -290,9 +298,7 @@ ROBOFLOW_MODEL_ID=aystro-project/9
     });
 
     test('works with no API key present at all', () async {
-      dotenv.loadFromString(
-        envString: 'ROBOFLOW_WORKSPACE=ma7mouds-workspace',
-      );
+      dotenv.loadFromString(envString: 'ROBOFLOW_WORKSPACE=ma7mouds-workspace');
       final (service, _) = serviceReplaying(
         fixture.readAsStringSync(),
         useProxy: true,
@@ -354,17 +360,20 @@ ROBOFLOW_MODEL_ID=aystro-project/9
       );
     });
 
-    test('reports a missing API key as a config error in direct mode', () async {
-      dotenv.loadFromString(
-        envString: 'ROBOFLOW_WORKSPACE=ma7mouds-workspace',
-      );
-      final (service, _) = serviceReplaying(fixture.readAsStringSync());
+    test(
+      'reports a missing API key as a config error in direct mode',
+      () async {
+        dotenv.loadFromString(
+          envString: 'ROBOFLOW_WORKSPACE=ma7mouds-workspace',
+        );
+        final (service, _) = serviceReplaying(fixture.readAsStringSync());
 
-      await expectLater(
-        service.detectProducts(sampleBytes),
-        throwsA(isA<DetectionConfigException>()),
-      );
-    });
+        await expectLater(
+          service.detectProducts(sampleBytes),
+          throwsA(isA<DetectionConfigException>()),
+        );
+      },
+    );
 
     test('rejects empty image bytes', () {
       final (service, _) = serviceReplaying(fixture.readAsStringSync());

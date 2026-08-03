@@ -89,7 +89,8 @@ class _IdleState extends StatelessWidget {
     return const _CenteredMessage(
       icon: Icons.insights_outlined,
       title: 'No analysis yet',
-      subtitle: 'Capture a shelf photo to see detected products and their '
+      subtitle:
+          'Capture a shelf photo to see detected products and their '
           'Share of Shelf breakdown.',
     );
   }
@@ -150,11 +151,7 @@ class _ErrorState extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              Icons.error_outline,
-              size: 34,
-              color: theme.colorScheme.error,
-            ),
+            Icon(Icons.error_outline, size: 34, color: theme.colorScheme.error),
             const SizedBox(height: 12),
             Text(
               message,
@@ -228,24 +225,39 @@ class _CenteredMessage extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 32),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, size: 36, color: theme.colorScheme.onSurfaceVariant),
-            const SizedBox(height: 12),
-            Text(title, style: theme.textTheme.titleSmall),
-            const SizedBox(height: 6),
-            Text(
-              subtitle,
-              textAlign: TextAlign.center,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
+    // Scrollable, not just centred. This sits inside a draggable sheet whose
+    // height the user controls, so "however much room is left" can be less
+    // than the message needs -- and a Column that overflows clips its own
+    // explanation rather than letting anyone read it.
+    return LayoutBuilder(
+      builder: (context, constraints) => SingleChildScrollView(
+        child: ConstrainedBox(
+          // Fills the panel when there is room, so the message stays centred
+          // rather than pinned to the top of a tall sheet.
+          constraints: BoxConstraints(
+            minHeight: constraints.maxHeight.isFinite
+                ? constraints.maxHeight
+                : 0,
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(icon, size: 36, color: theme.colorScheme.onSurfaceVariant),
+                const SizedBox(height: 12),
+                Text(title, style: theme.textTheme.titleSmall),
+                const SizedBox(height: 6),
+                Text(
+                  subtitle,
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );

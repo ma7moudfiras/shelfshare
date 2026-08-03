@@ -31,7 +31,11 @@ void main() {
       MaterialApp(
         theme: AppTheme.dark(),
         home: MarketDetailScreen(
-          market: market(name: 'Carrefour City', city: 'Ramallah', area: 'Al-Masyoun'),
+          market: market(
+            name: 'Carrefour City',
+            city: 'Ramallah',
+            area: 'Al-Masyoun',
+          ),
           marketService: markets,
           reps: reps,
         ),
@@ -92,16 +96,16 @@ void main() {
 
   testWidgets('with no reps on the team it says what to do', (tester) async {
     await pumpDetail(tester);
-    expect(find.textContaining('No sales reps on the team yet'), findsOneWidget);
+    expect(
+      find.textContaining('No sales reps on the team yet'),
+      findsOneWidget,
+    );
   });
 
   // A market with no fridges is one a rep can reach and then find nothing to
   // photograph, so it is worth flagging at setup rather than at the shelf.
   testWidgets('a market with no fridges is called out', (tester) async {
-    await pumpDetail(
-      tester,
-      service: FakeMarketService(fridgeList: const []),
-    );
+    await pumpDetail(tester, service: FakeMarketService(fridgeList: const []));
 
     expect(find.textContaining('No fridges here yet'), findsOneWidget);
   });

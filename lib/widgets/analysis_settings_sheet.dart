@@ -127,7 +127,8 @@ class _AnalysisSettingsSheetState extends State<AnalysisSettingsSheet> {
                 children: [
                   _SectionHeader(
                     title: 'Model version',
-                    subtitle: 'Newer versions train on more images. Metrics '
+                    subtitle:
+                        'Newer versions train on more images. Metrics '
                         'are mAP@50 — Roboflow’s dashboard headlines the '
                         'stricter mAP50-95, so numbers there read lower.',
                   ),
@@ -145,7 +146,8 @@ class _AnalysisSettingsSheetState extends State<AnalysisSettingsSheet> {
                   _SectionHeader(
                     title: 'Minimum confidence',
                     trailing: '${(_settings.confidence * 100).round()}%',
-                    subtitle: 'Lower this to reveal products the model is less '
+                    subtitle:
+                        'Lower this to reveal products the model is less '
                         'sure about. Classes with fewer training images often '
                         'score below the default '
                         '${(AnalysisSettings.defaultConfidence * 100).round()}%.',

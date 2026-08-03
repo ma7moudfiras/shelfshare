@@ -10,11 +10,8 @@ Detection detection(String className, double size) => Detection(
   box: BoundingBox(centerX: 50, centerY: 50, width: size, height: size),
 );
 
-DetectionResult resultOf(List<Detection> detections) => DetectionResult(
-  detections: detections,
-  imageWidth: 720,
-  imageHeight: 540,
-);
+DetectionResult resultOf(List<Detection> detections) =>
+    DetectionResult(detections: detections, imageWidth: 720, imageHeight: 540);
 
 void main() {
   group('filterByClasses', () {

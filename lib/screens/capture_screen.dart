@@ -419,7 +419,7 @@ class _CaptureScreenState extends State<CaptureScreen>
             _buildStage(),
             _TopBar(
               onSettings: _openSettings,
-              onClose: hasCapture ? _reset : null,
+              targetLabel: widget.target?.label,
               onFullScreen: hasCapture ? _openFullScreen : null,
               // Only when there is somewhere to go back to. A sales rep who
               // lands straight on this screen has no dashboard behind it, and
@@ -442,9 +442,7 @@ class _CaptureScreenState extends State<CaptureScreen>
               ),
             Align(
               alignment: Alignment.bottomCenter,
-              child: hasCapture
-                  ? _buildResultsSheet()
-                  : _buildCaptureBar(),
+              child: hasCapture ? _buildResultsSheet() : _buildCaptureBar(),
             ),
           ],
         ),
@@ -542,9 +540,7 @@ class _CaptureScreenState extends State<CaptureScreen>
         return Container(
           decoration: BoxDecoration(
             color: AppTheme.surfaceDarkElevated,
-            borderRadius: const BorderRadius.vertical(
-              top: Radius.circular(24),
-            ),
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
             boxShadow: [
               BoxShadow(
                 color: Colors.black.withValues(alpha: 0.4),
@@ -568,13 +564,15 @@ class _CaptureScreenState extends State<CaptureScreen>
                 padding: const EdgeInsets.fromLTRB(20, 0, 12, 8),
                 child: Row(
                   children: [
-                    Text(
-                      'Analysis',
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
+                    Expanded(
+                      child: Text(
+                        'Analysis',
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                     ),
-                    const Spacer(),
                     TextButton.icon(
                       onPressed: _reset,
                       icon: const Icon(Icons.refresh, size: 18),
@@ -594,24 +592,28 @@ class _CaptureScreenState extends State<CaptureScreen>
                   scrollController: scrollController,
                 ),
               ),
-              // Only when there is somewhere to record this. Without a target
-              // the screen is a preview and there is nothing to save into.
-              if (widget.target != null &&
-                  _result != null &&
-                  !_isAnalyzing &&
-                  _errorMessage == null)
+              if (_result != null && !_isAnalyzing && _errorMessage == null)
                 SafeArea(
                   top: false,
                   child: Padding(
                     padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
-                    child: SizedBox(
-                      width: double.infinity,
-                      child: FilledButton.icon(
-                        onPressed: _openReview,
-                        icon: const Icon(Icons.fact_check_outlined, size: 18),
-                        label: const Text('Check the count'),
-                      ),
-                    ),
+                    child: widget.target != null
+                        ? SizedBox(
+                            width: double.infinity,
+                            child: FilledButton.icon(
+                              onPressed: _openReview,
+                              icon: const Icon(
+                                Icons.fact_check_outlined,
+                                size: 18,
+                              ),
+                              label: const Text('Check and submit'),
+                            ),
+                          )
+                        // Preview mode has nowhere to file this. Saying so is
+                        // the whole point: a missing submit button reads as a
+                        // broken app, and someone who photographs a shelf
+                        // believing it was recorded has lost the visit.
+                        : const _PreviewOnlyNotice(),
                   ),
                 ),
             ],
@@ -674,23 +676,37 @@ class _CaptureScreenState extends State<CaptureScreen>
 }
 
 /// Floating controls along the top edge.
+/// Chrome over the viewfinder: where you are, and the controls.
+///
+/// The scrim stays dark in both themes. It sits over a photograph of a fridge,
+/// and a light bar over a bright shelf is unreadable -- matching the app's
+/// surface colour here would cost legibility for consistency nobody benefits
+/// from. What follows the theme is everything that can: type scale, corner
+/// radius, and the accent used for state.
 class _TopBar extends StatelessWidget {
   final VoidCallback onSettings;
-  final VoidCallback? onClose;
   final VoidCallback? onFullScreen;
 
   /// Null when this screen is the root and there is nothing behind it.
   final VoidCallback? onBack;
 
+  /// What is being photographed, e.g. `Entrance cooler · Shelf 2`.
+  ///
+  /// Null in preview mode, where there is no subject to name.
+  final String? targetLabel;
+
   const _TopBar({
     required this.onSettings,
-    this.onClose,
     this.onFullScreen,
     this.onBack,
+    this.targetLabel,
   });
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final target = targetLabel;
+
     return Align(
       alignment: Alignment.topCenter,
       child: Container(
@@ -698,13 +714,15 @@ class _TopBar extends StatelessWidget {
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [Color(0xA6000000), Colors.transparent],
+            colors: [Color(0xB3000000), Colors.transparent],
           ),
         ),
         child: SafeArea(
           bottom: false,
           child: Padding(
-            padding: EdgeInsets.fromLTRB(onBack != null ? 6 : 16, 6, 6, 20),
+            // Even inset on both sides, so the controls sit square in the
+            // corner rather than drifting in from it.
+            padding: const EdgeInsets.fromLTRB(10, 8, 10, 22),
             child: Row(
               children: [
                 if (onBack != null) ...[
@@ -713,21 +731,41 @@ class _TopBar extends StatelessWidget {
                     tooltip: 'Back',
                     onPressed: onBack!,
                   ),
-                  const SizedBox(width: 10),
-                ],
-                const Flexible(
-                  child: Text(
-                    'Shelf Monitor',
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 17,
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: -0.2,
-                    ),
+                  const SizedBox(width: 8),
+                ] else
+                  const SizedBox(width: 6),
+
+                // The subject, not the app name. A rep at a fridge door needs
+                // to know which shelf this shot is being filed against; they
+                // already know what app they opened.
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        target ?? 'Shelf Monitor',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: -0.1,
+                        ),
+                      ),
+                      if (target != null)
+                        Text(
+                          'Photographing',
+                          maxLines: 1,
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            color: Colors.white70,
+                          ),
+                        ),
+                    ],
                   ),
                 ),
-                const Spacer(),
+                const SizedBox(width: 8),
+
                 if (onFullScreen != null) ...[
                   _GlassIconButton(
                     icon: Icons.fullscreen,
@@ -736,23 +774,58 @@ class _TopBar extends StatelessWidget {
                   ),
                   const SizedBox(width: 8),
                 ],
+                // Always last, so the settings control holds the same corner
+                // whether or not a photo has been taken. Discarding used to sit
+                // to its right and push it inward after every capture -- a
+                // control that moves is a control you have to hunt for, and it
+                // duplicated the Retake button already in the results sheet.
                 _GlassIconButton(
                   icon: Icons.tune,
-                  tooltip: 'Analysis settings',
+                  tooltip: 'Model and product filters',
                   onPressed: onSettings,
                 ),
-                if (onClose != null) ...[
-                  const SizedBox(width: 8),
-                  _GlassIconButton(
-                    icon: Icons.close,
-                    tooltip: 'Discard capture',
-                    onPressed: onClose!,
-                  ),
-                ],
               ],
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Explains why a capture taken outside a visit cannot be submitted.
+class _PreviewOnlyNotice extends StatelessWidget {
+  const _PreviewOnlyNotice();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            Icons.info_outline,
+            size: 18,
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'Preview only — this is not being saved. To record a shelf, '
+              'start from a market so the photo has a fridge to belong to.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+                height: 1.35,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -775,14 +848,26 @@ class _GlassIconButton extends StatelessWidget {
     return Tooltip(
       message: tooltip,
       child: Material(
-        color: Colors.black.withValues(alpha: 0.4),
+        color: Colors.black.withValues(alpha: 0.45),
         shape: const CircleBorder(),
+        clipBehavior: Clip.antiAlias,
         child: InkWell(
           onTap: onPressed,
           customBorder: const CircleBorder(),
-          child: Padding(
-            padding: const EdgeInsets.all(9),
-            child: Icon(icon, color: Colors.white, size: 21),
+          // 40x40: the smallest target that still clears the accessibility
+          // floor for a thumb, which the previous 39px sizing sat just under.
+          child: Ink(
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              // A hairline keeps the button findable against a blown-out
+              // highlight, where a dark translucent fill disappears.
+              border: Border.all(color: Colors.white24, width: 0.5),
+            ),
+            child: SizedBox(
+              width: 40,
+              height: 40,
+              child: Icon(icon, color: Colors.white, size: 20),
+            ),
           ),
         ),
       ),

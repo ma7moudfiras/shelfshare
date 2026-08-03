@@ -82,8 +82,7 @@ class ModelCatalogService {
         final version = entry.cast<String, dynamic>();
 
         final model = version['model'];
-        final hasModel =
-            model != null && (model is! List || model.isNotEmpty);
+        final hasModel = model != null && (model is! List || model.isNotEmpty);
         if (!hasModel) continue;
 
         final number = int.tryParse(

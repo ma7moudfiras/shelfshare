@@ -95,12 +95,7 @@ void main() {
 
   group('BoundingBox', () {
     test('derives edges from centre and size', () {
-      const box = BoundingBox(
-        centerX: 100,
-        centerY: 50,
-        width: 40,
-        height: 20,
-      );
+      const box = BoundingBox(centerX: 100, centerY: 50, width: 40, height: 20);
 
       expect(box.left, 80);
       expect(box.top, 40);

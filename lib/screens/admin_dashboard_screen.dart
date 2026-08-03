@@ -7,6 +7,7 @@ import '../services/admin_service.dart';
 import '../services/auth_service.dart';
 import '../services/detection_service.dart';
 import '../services/market_service.dart';
+import '../services/visit_service.dart';
 import '../theme/layout.dart';
 import '../widgets/access_request_list.dart';
 import '../widgets/adaptive_scaffold.dart';
@@ -15,8 +16,8 @@ import '../widgets/error_state.dart';
 import '../widgets/market_form_dialog.dart';
 import '../widgets/market_list.dart';
 import '../widgets/team_list.dart';
-import 'capture_screen.dart';
 import 'market_detail_screen.dart';
+import 'visit_start_screen.dart';
 
 /// What an administrator manages, in the order they need it.
 enum _Tab {
@@ -39,6 +40,7 @@ class AdminDashboardScreen extends StatefulWidget {
   final AuthService authService;
   final AdminService adminService;
   final MarketService marketService;
+  final VisitService visitService;
   final DetectionService? detectionService;
 
   const AdminDashboardScreen({
@@ -47,6 +49,7 @@ class AdminDashboardScreen extends StatefulWidget {
     required this.authService,
     required this.adminService,
     required this.marketService,
+    required this.visitService,
     this.detectionService,
   });
 
@@ -194,7 +197,10 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
 
     final companies = _companies ?? const <CompanyOption>[];
     if (companies.isEmpty) {
-      _say('Add a company first — a market has to belong to one.', isError: true);
+      _say(
+        'Add a company first — a market has to belong to one.',
+        isError: true,
+      );
       return null;
     }
 
@@ -270,15 +276,22 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           },
       ],
       actions: [
+        // Goes through a market rather than straight to the camera. An
+        // admin who photographed a shelf from here used to get a number and
+        // no way to submit it -- the capture had no fridge to belong to, so
+        // there was nothing to save it into.
         IconButton(
           onPressed: () => Navigator.of(context).push(
             MaterialPageRoute<void>(
-              builder: (_) =>
-                  CaptureScreen(detectionService: widget.detectionService),
+              builder: (_) => VisitStartScreen(
+                profile: widget.profile,
+                visitService: widget.visitService,
+                detectionService: widget.detectionService,
+              ),
             ),
           ),
           icon: const Icon(Icons.photo_camera_outlined),
-          tooltip: 'Open capture',
+          tooltip: 'Record a visit',
         ),
         IconButton(
           onPressed: widget.authService.signOut,

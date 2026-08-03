@@ -17,11 +17,7 @@ Detection detection(
 );
 
 CaptureDraft draftOf(List<Detection> detections) => CaptureDraft.fromResult(
-  DetectionResult(
-    detections: detections,
-    imageWidth: 1000,
-    imageHeight: 1000,
-  ),
+  DetectionResult(detections: detections, imageWidth: 1000, imageHeight: 1000),
 );
 
 void main() {
@@ -110,8 +106,9 @@ void main() {
 
       expect(after.entries.last.detection.box.area, greaterThan(0));
 
-      final pepsi = after.corrected.shareOfShelf.shares
-          .singleWhere((s) => s.className == 'pepsi');
+      final pepsi = after.corrected.shareOfShelf.shares.singleWhere(
+        (s) => s.className == 'pepsi',
+      );
       expect(pepsi.fraction, greaterThan(0));
     });
 

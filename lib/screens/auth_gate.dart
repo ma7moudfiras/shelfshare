@@ -9,7 +9,7 @@ import '../services/visit_service.dart';
 import 'admin_dashboard_screen.dart';
 import 'company_request_screen.dart';
 import 'pending_screen.dart';
-import 'rep_home_screen.dart';
+import 'visit_start_screen.dart';
 import 'sign_in_screen.dart';
 
 /// Decides what a user sees based on who they are.
@@ -74,7 +74,7 @@ class AuthGate extends StatelessWidget {
           // every screen between them and the shutter costs a visit. It also
           // cost the data: a photo with no market, fridge or visit attached
           // cannot be stored. Choosing where you are comes first now.
-          UserRole.salesRep when visits != null => RepHomeScreen(
+          UserRole.salesRep when visits != null => VisitStartScreen(
             profile: profile,
             authService: authService,
             visitService: visits,
@@ -83,13 +83,14 @@ class AuthGate extends StatelessWidget {
 
           // Both admin roles share one dashboard. What they can see differs,
           // but Row Level Security decides that, not this switch.
-          UserRole.companyAdmin ||
-          UserRole.platformAdmin when admin != null && markets != null =>
+          UserRole.companyAdmin || UserRole.platformAdmin
+              when admin != null && markets != null && visits != null =>
             AdminDashboardScreen(
               profile: profile,
               authService: authService,
               adminService: admin,
               marketService: markets,
+              visitService: visits,
               detectionService: detectionService,
             ),
 

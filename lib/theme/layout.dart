@@ -60,7 +60,8 @@ extension LayoutSizeContext on BuildContext {
   ///
   /// Reads via `MediaQuery.sizeOf`, so a widget using this rebuilds when the
   /// browser window is resized rather than keeping the shape it started with.
-  LayoutSize get layoutSize => Breakpoints.sizeFor(MediaQuery.sizeOf(this).width);
+  LayoutSize get layoutSize =>
+      Breakpoints.sizeFor(MediaQuery.sizeOf(this).width);
 
   bool get isCompact => layoutSize == LayoutSize.compact;
 }

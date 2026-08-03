@@ -51,9 +51,10 @@ class _PhotoViewerScreenState extends State<PhotoViewerScreen>
   }
 
   void _runZoom(Matrix4 target) {
-    _zoomAnimation = Matrix4Tween(begin: _controller.value, end: target).animate(
-      CurvedAnimation(parent: _animation, curve: Curves.easeOutCubic),
-    )..addListener(() => _controller.value = _zoomAnimation!.value);
+    _zoomAnimation =
+        Matrix4Tween(begin: _controller.value, end: target).animate(
+          CurvedAnimation(parent: _animation, curve: Curves.easeOutCubic),
+        )..addListener(() => _controller.value = _zoomAnimation!.value);
     _animation.forward(from: 0);
   }
 
@@ -73,12 +74,7 @@ class _PhotoViewerScreenState extends State<PhotoViewerScreen>
         0,
         1,
       )
-      ..scaleByDouble(
-        _doubleTapScale,
-        _doubleTapScale,
-        _doubleTapScale,
-        1,
-      );
+      ..scaleByDouble(_doubleTapScale, _doubleTapScale, _doubleTapScale, 1);
     _runZoom(target);
   }
 

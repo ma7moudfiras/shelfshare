@@ -208,11 +208,13 @@ void main() {
     ) async {
       final auth = FakeAuthService();
       await pumpGate(tester, auth);
-      auth.emit(profileWith(
-        UserRole.pending,
-        requestedCompanyId: 'c-unipal',
-        requestedCompanyName: 'UniPal',
-      ));
+      auth.emit(
+        profileWith(
+          UserRole.pending,
+          requestedCompanyId: 'c-unipal',
+          requestedCompanyName: 'UniPal',
+        ),
+      );
       await tester.pump();
 
       expect(find.byType(PendingScreen), findsOneWidget);

@@ -39,10 +39,7 @@ class CameraStage extends StatelessWidget {
           child: SizedBox.expand(child: preview),
         ),
         Positioned.fill(
-          child: FramingMask(
-            key: const ValueKey('framing-mask'),
-            ratio: ratio,
-          ),
+          child: FramingMask(key: const ValueKey('framing-mask'), ratio: ratio),
         ),
       ],
     );

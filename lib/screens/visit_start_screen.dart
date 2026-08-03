@@ -11,34 +11,44 @@ import '../widgets/error_state.dart';
 import '../widgets/market_list.dart';
 import 'rep_visit_screen.dart';
 
-/// Where a sales rep starts: which market are you standing in?
+/// Where recording a shelf begins: which market are you standing in?
 ///
-/// This screen used to not exist -- reps were dropped straight onto the camera.
-/// That made the shutter one tap away, which sounds right until you notice the
-/// photo had nowhere to go: no market, no fridge, no visit, so nothing could be
-/// stored and no dashboard could ever be built on it. Choosing the market first
-/// is what turns a photo into a measurement.
-class RepHomeScreen extends StatefulWidget {
+/// Used by both roles, which is why it is not named after one. Reps get it as
+/// their home; an administrator reaches it from the dashboard. The database
+/// backs that up -- `visits_admin_manage` and `captures_admin_manage` grant a
+/// company admin full write on their own company's rows, so an admin recording
+/// a visit is a case the schema already allows and the client was the only
+/// thing refusing.
+///
+/// It exists at all because a photo with no market, fridge and visit attached
+/// cannot be stored. Reps used to land straight on the camera: one tap from the
+/// shutter, and nowhere to put the result.
+class VisitStartScreen extends StatefulWidget {
   final UserProfile profile;
-  final AuthService authService;
   final VisitService visitService;
   final DetectionService? detectionService;
 
-  const RepHomeScreen({
+  /// Offered only at the root. Pushed onto a dashboard the app bar carries a
+  /// back arrow instead, and signing out from a pushed route is a trap.
+  final AuthService? authService;
+
+  const VisitStartScreen({
     super.key,
     required this.profile,
-    required this.authService,
     required this.visitService,
     this.detectionService,
+    this.authService,
   });
 
   @override
-  State<RepHomeScreen> createState() => _RepHomeScreenState();
+  State<VisitStartScreen> createState() => _VisitStartScreenState();
 }
 
-class _RepHomeScreenState extends State<RepHomeScreen> {
+class _VisitStartScreenState extends State<VisitStartScreen> {
   List<PointOfSale>? _markets;
   String? _error;
+
+  bool get _isRep => widget.profile.role == UserRole.salesRep;
 
   @override
   void initState() {
@@ -59,8 +69,10 @@ class _RepHomeScreenState extends State<RepHomeScreen> {
   }
 
   Future<void> _openMarket(PointOfSale market) async {
-    final companyId = widget.profile.companyId;
-    if (companyId == null) return;
+    // A platform admin has no company of their own, so the market's company is
+    // the only correct answer -- and it is the one the row will be written
+    // against either way.
+    final companyId = widget.profile.companyId ?? market.companyId;
 
     await Navigator.of(context).push(
       MaterialPageRoute(
@@ -77,15 +89,19 @@ class _RepHomeScreenState extends State<RepHomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final auth = widget.authService;
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Shelf Monitor'),
+        title: Text(auth != null ? 'Shelf Monitor' : 'Record a visit'),
         actions: [
-          IconButton(
-            onPressed: widget.authService.signOut,
-            icon: const Icon(Icons.logout),
-            tooltip: 'Sign out',
-          ),
+          if (auth != null)
+            IconButton(
+              onPressed: auth.signOut,
+              icon: const Icon(Icons.logout),
+              tooltip: 'Sign out',
+            ),
         ],
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(30),
@@ -95,8 +111,8 @@ class _RepHomeScreenState extends State<RepHomeScreen> {
               alignment: Alignment.centerLeft,
               child: Text(
                 'Where are you today?',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
                 ),
               ),
             ),
@@ -112,18 +128,20 @@ class _RepHomeScreenState extends State<RepHomeScreen> {
       return ErrorState(message: _error!, onRetry: _load);
     }
 
-    // An empty list here almost always means nobody has assigned this rep to a
-    // market yet, so say that rather than leaving a blank screen that reads as
-    // a broken app.
     if (_markets != null && _markets!.isEmpty) {
-      return const ContentShell(
+      return ContentShell(
         maxWidth: Breakpoints.readableWidth,
+        // The two roles reach an empty list for different reasons. Telling a
+        // rep to add a market they have no permission to add would send them
+        // somewhere they cannot act.
         child: EmptyState(
           icon: Icons.storefront_outlined,
-          title: 'No markets assigned to you',
-          message:
-              'Your administrator decides which markets you cover. Ask them to '
-              'assign you, then pull down to refresh.',
+          title: 'No markets to visit yet',
+          message: _isRep
+              ? 'Your administrator decides which markets you cover. Ask them '
+                    'to assign you, then pull down to refresh.'
+              : 'Add a market with at least one fridge under Markets, then '
+                    'come back here to record a visit.',
         ),
       );
     }

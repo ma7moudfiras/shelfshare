@@ -146,9 +146,7 @@ class WorkflowResponseParser {
   _ParsedDetections? _tryReadDetections(Object? value) {
     if (value is List) {
       final detections = _readDetectionList(value);
-      return detections == null
-          ? null
-          : _ParsedDetections(detections, 0, 0);
+      return detections == null ? null : _ParsedDetections(detections, 0, 0);
     }
 
     if (value is! Map) return null;
@@ -211,19 +209,14 @@ class WorkflowResponseParser {
     // not a bounding box.
     if (x == null || y == null || width == null || height == null) return null;
 
-    final className =
-        (map['class'] ?? map['class_name'] ?? map['label'])?.toString();
+    final className = (map['class'] ?? map['class_name'] ?? map['label'])
+        ?.toString();
     if (className == null || className.isEmpty) return null;
 
     return Detection(
       className: className,
       confidence: _toDouble(map['confidence']) ?? 0,
-      box: BoundingBox(
-        centerX: x,
-        centerY: y,
-        width: width,
-        height: height,
-      ),
+      box: BoundingBox(centerX: x, centerY: y, width: width, height: height),
       classId: _toInt(map['class_id']),
       trackerId: _toInt(map['tracker_id']),
     );

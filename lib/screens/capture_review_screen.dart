@@ -142,7 +142,10 @@ class _CaptureReviewScreenState extends State<CaptureReviewScreen> {
                 const VerticalDivider(width: 1),
                 Expanded(
                   flex: 2,
-                  child: SingleChildScrollView(padding: const EdgeInsets.all(20), child: panel),
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.all(20),
+                    child: panel,
+                  ),
                 ),
               ],
             )

@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shelf_monitor/models/capture_target.dart';
 import 'package:shelf_monitor/models/detection_result.dart';
 import 'package:shelf_monitor/screens/capture_screen.dart';
 import 'package:shelf_monitor/services/camera_service.dart';
@@ -13,9 +14,12 @@ import 'package:shelf_monitor/services/model_catalog_service.dart';
 import 'package:shelf_monitor/widgets/aspect_ratio_selector.dart';
 import 'package:shelf_monitor/models/model_option.dart';
 
+import '../support/fake_services.dart';
+
 /// A decodable JPEG for tests that put a captured still on screen.
-Uint8List sampleJpegBytes() =>
-    Uint8List.fromList(File('test/fixtures/sample_shelf.jpg').readAsBytesSync());
+Uint8List sampleJpegBytes() => Uint8List.fromList(
+  File('test/fixtures/sample_shelf.jpg').readAsBytesSync(),
+);
 
 /// Camera stand-in that records how often the preview was (re)acquired.
 ///
@@ -58,7 +62,8 @@ class FakeCameraService implements CameraService {
   }
 
   @override
-  Future<XFile> capture() async => XFile.fromData(photoBytes, name: 'shelf.jpg');
+  Future<XFile> capture() async =>
+      XFile.fromData(photoBytes, name: 'shelf.jpg');
 
   @override
   Future<XFile?> pickFromGallery() async =>
@@ -115,8 +120,7 @@ class StubDetectionService implements DetectionService {
     Uint8List imageBytes, {
     String? modelId,
     double? confidence,
-  }) async =>
-      DetectionResult.empty(imageWidth: 100, imageHeight: 100);
+  }) async => DetectionResult.empty(imageWidth: 100, imageHeight: 100);
 
   @override
   void dispose() {}
@@ -195,6 +199,90 @@ void main() {
       // there causes avoidable flicker.
       expect(camera.disposeCalls, 0);
       expect(camera.isReady, isTrue);
+    });
+  });
+
+  group('submitting a capture', () {
+    Future<void> pumpWithTarget(
+      WidgetTester tester, {
+      required CaptureTarget? target,
+      FakeVisitService? visits,
+    }) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CaptureScreen(
+            cameraService: FakeCameraService(),
+            detectionService: StubDetectionService(),
+            catalogService: FakeCatalogService(),
+            imageProcessor: PassThroughImageProcessor(),
+            target: target,
+            visitService: target == null
+                ? null
+                : (visits ?? FakeVisitService()),
+          ),
+        ),
+      );
+      await settle(tester);
+      await tester.tap(find.bySemanticsLabel('Capture shelf photo'));
+      await settle(tester);
+    }
+
+    CaptureTarget targetFor({int sections = 1}) => CaptureTarget(
+      visitId: 'v1',
+      companyId: 'c-unipal',
+      fridge: fridge(name: 'Entrance cooler', sectionCount: sections),
+    );
+
+    testWidgets('a capture inside a visit offers submission', (tester) async {
+      await pumpWithTarget(tester, target: targetFor());
+
+      expect(find.text('Check and submit'), findsOneWidget);
+    });
+
+    testWidgets('names what is being photographed', (tester) async {
+      await pumpWithTarget(tester, target: targetFor());
+
+      // A rep at a fridge door needs to know which shelf this is filed
+      // against; the app's own name tells them nothing.
+      expect(find.text('Entrance cooler'), findsOneWidget);
+      expect(find.text('Shelf Monitor'), findsNothing);
+    });
+
+    // The complaint this exists for: a capture taken outside a visit had no
+    // submit button and no explanation, which reads as a broken app.
+    testWidgets('a preview capture says it is not being saved', (tester) async {
+      await pumpWithTarget(tester, target: null);
+
+      expect(find.text('Check and submit'), findsNothing);
+      expect(find.textContaining('not being saved'), findsOneWidget);
+    });
+
+    // Regression: the settings control used to sit left of a discard button
+    // that only appeared after a capture, so it moved between states.
+    testWidgets('the settings control keeps its corner after a capture', (
+      tester,
+    ) async {
+      await pumpWithTarget(tester, target: targetFor());
+      final after = tester.getTopRight(
+        find.byTooltip('Model and product filters'),
+      );
+
+      await tester.tap(find.text('Retake'));
+      await settle(tester);
+      final before = tester.getTopRight(
+        find.byTooltip('Model and product filters'),
+      );
+
+      expect(after, before);
+    });
+
+    testWidgets('discarding is offered once, in the results sheet', (
+      tester,
+    ) async {
+      await pumpWithTarget(tester, target: targetFor());
+
+      expect(find.text('Retake'), findsOneWidget);
+      expect(find.byTooltip('Discard capture'), findsNothing);
     });
   });
 

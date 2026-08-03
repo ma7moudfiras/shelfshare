@@ -287,7 +287,8 @@ class _FridgeFormDialogState extends State<FridgeFormDialog> {
                     ButtonSegment(value: 5, label: Text('5')),
                   ],
                   selected: {_sections},
-                  onSelectionChanged: (s) => setState(() => _sections = s.first),
+                  onSelectionChanged: (s) =>
+                      setState(() => _sections = s.first),
                 ),
               ],
             ),

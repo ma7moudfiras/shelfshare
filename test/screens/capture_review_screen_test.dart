@@ -10,8 +10,9 @@ import 'package:shelf_monitor/models/detection_result.dart';
 import 'package:shelf_monitor/screens/capture_review_screen.dart';
 import 'package:shelf_monitor/theme/app_theme.dart';
 
-Uint8List sampleJpegBytes() =>
-    Uint8List.fromList(File('test/fixtures/sample_shelf.jpg').readAsBytesSync());
+Uint8List sampleJpegBytes() => Uint8List.fromList(
+  File('test/fixtures/sample_shelf.jpg').readAsBytesSync(),
+);
 
 Detection detection(String className, {double confidence = 0.9}) => Detection(
   className: className,

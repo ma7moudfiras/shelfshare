@@ -67,7 +67,10 @@ void main() {
     for (final ratio in ratios) {
       await tester.pumpWidget(host(ratio));
       final stack = tester.widget<Stack>(
-        find.descendant(of: find.byType(CameraStage), matching: find.byType(Stack)),
+        find.descendant(
+          of: find.byType(CameraStage),
+          matching: find.byType(Stack),
+        ),
       );
       counts.add(stack.children.length);
     }
@@ -79,12 +82,14 @@ void main() {
   ) async {
     await tester.pumpWidget(host(1.0));
     expect(
-      tester.widget<IgnorePointer>(
-        find.descendant(
-          of: find.byType(FramingMask),
-          matching: find.byType(IgnorePointer),
-        ),
-      ).ignoring,
+      tester
+          .widget<IgnorePointer>(
+            find.descendant(
+              of: find.byType(FramingMask),
+              matching: find.byType(IgnorePointer),
+            ),
+          )
+          .ignoring,
       isTrue,
     );
   });
@@ -110,7 +115,11 @@ void main() {
 
     test('a cropped ratio still outlines what will survive the crop', () {
       for (final ratio in [1.0, 3 / 4, 16 / 9]) {
-        expect(outlineFor(ratio).paint.color.a, greaterThan(0), reason: '$ratio');
+        expect(
+          outlineFor(ratio).paint.color.a,
+          greaterThan(0),
+          reason: '$ratio',
+        );
       }
     });
 
@@ -121,7 +130,9 @@ void main() {
     test('every ratio issues the same outline draw, visible or not', () {
       final strokeCounts = <int>{
         for (final ratio in <double?>[null, 1.0, 3 / 4, 16 / 9])
-          drawsFor(ratio).where((d) => d.paint.style == PaintingStyle.stroke).length,
+          drawsFor(
+            ratio,
+          ).where((d) => d.paint.style == PaintingStyle.stroke).length,
       };
       expect(strokeCounts, {1});
     });
@@ -215,7 +226,8 @@ class _RecordingCanvas implements Canvas {
   final List<({Rect rect, Paint paint})> rects = [];
 
   @override
-  void drawRect(Rect rect, Paint paint) => rects.add((rect: rect, paint: paint));
+  void drawRect(Rect rect, Paint paint) =>
+      rects.add((rect: rect, paint: paint));
 
   @override
   dynamic noSuchMethod(Invocation invocation) => null;
