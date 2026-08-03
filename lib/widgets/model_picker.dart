@@ -90,7 +90,8 @@ class _ModelPickerState extends State<ModelPicker> {
                 _ModelTile(
                   model: visible[i],
                   isSelected: visible[i].modelId == selected,
-                  isNewest: i == 0 && !_expanded || visible[i] == widget.models.first,
+                  isNewest:
+                      i == 0 && !_expanded || visible[i] == widget.models.first,
                   onTap: () => widget.onSelected(visible[i].modelId),
                 ),
               ],
@@ -184,9 +185,7 @@ class _ModelTile extends StatelessWidget {
               // A check reads as "this is the one" more immediately than a
               // radio dot, and keeps the row height down.
               Icon(
-                isSelected
-                    ? Icons.check_circle_rounded
-                    : Icons.circle_outlined,
+                isSelected ? Icons.check_circle_rounded : Icons.circle_outlined,
                 size: 22,
                 color: isSelected ? scheme.primary : scheme.outlineVariant,
               ),

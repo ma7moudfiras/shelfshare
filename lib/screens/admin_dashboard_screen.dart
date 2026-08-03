@@ -1,14 +1,33 @@
 import 'package:flutter/material.dart';
 
 import '../models/company_option.dart';
+import '../models/point_of_sale.dart';
 import '../models/user_profile.dart';
 import '../services/admin_service.dart';
 import '../services/auth_service.dart';
 import '../services/detection_service.dart';
+import '../services/market_service.dart';
+import '../services/visit_service.dart';
+import '../theme/layout.dart';
 import '../widgets/access_request_list.dart';
+import '../widgets/adaptive_scaffold.dart';
 import '../widgets/company_list.dart';
+import '../widgets/error_state.dart';
+import '../widgets/market_form_dialog.dart';
+import '../widgets/market_list.dart';
 import '../widgets/team_list.dart';
-import 'capture_screen.dart';
+import 'market_detail_screen.dart';
+import 'visit_start_screen.dart';
+
+/// What an administrator manages, in the order they need it.
+enum _Tab {
+  requests,
+  team,
+  markets,
+
+  /// Platform admins only: companies are Aystro's to create.
+  companies,
+}
 
 /// Home for both administrator roles.
 ///
@@ -16,13 +35,12 @@ import 'capture_screen.dart';
 /// the same things to the same objects -- the difference is only how much they
 /// can see, and Row Level Security already decides that. Duplicating the screen
 /// would mean duplicating every future change to it.
-///
-/// The one genuine difference is that companies are a platform admin's to
-/// create, so that tab is theirs alone.
 class AdminDashboardScreen extends StatefulWidget {
   final UserProfile profile;
   final AuthService authService;
   final AdminService adminService;
+  final MarketService marketService;
+  final VisitService visitService;
   final DetectionService? detectionService;
 
   const AdminDashboardScreen({
@@ -30,6 +48,8 @@ class AdminDashboardScreen extends StatefulWidget {
     required this.profile,
     required this.authService,
     required this.adminService,
+    required this.marketService,
+    required this.visitService,
     this.detectionService,
   });
 
@@ -38,15 +58,31 @@ class AdminDashboardScreen extends StatefulWidget {
 }
 
 class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
-  int _tab = 0;
+  int _tabIndex = 0;
 
   List<UserProfile>? _requests;
   List<UserProfile>? _members;
   List<CompanyOption>? _companies;
+  List<PointOfSale>? _markets;
   String? _error;
   bool _isBusy = false;
 
   bool get _isPlatformAdmin => widget.profile.role == UserRole.platformAdmin;
+
+  List<_Tab> get _tabs => [
+    _Tab.requests,
+    _Tab.team,
+    _Tab.markets,
+    if (_isPlatformAdmin) _Tab.companies,
+  ];
+
+  _Tab get _tab => _tabs[_tabIndex.clamp(0, _tabs.length - 1)];
+
+  /// Team members who can be assigned to a market.
+  List<UserProfile> get _reps => [
+    for (final member in _members ?? const <UserProfile>[])
+      if (member.role == UserRole.salesRep) member,
+  ];
 
   @override
   void initState() {
@@ -62,23 +98,32 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       final companies = _isPlatformAdmin
           ? await widget.adminService.companies()
           : const <CompanyOption>[];
+      final markets = await widget.marketService.markets();
       if (!mounted) return;
       setState(() {
         _requests = requests;
         _members = members;
         _companies = companies;
+        _markets = markets;
       });
     } on AdminFailure catch (e) {
-      if (!mounted) return;
-      // The lists are deliberately left as they are. On a first load they are
-      // still null, so the whole screen becomes an error with a retry. On a
-      // later refresh they still hold the last good data, and replacing that
-      // with an error page would throw away something usable to report a
-      // problem the user can see for themselves in the snackbar.
-      final hadData = _requests != null;
-      setState(() => _error = e.message);
-      if (hadData) _say(e.message, isError: true);
+      _reportLoadFailure(e.message);
+    } on MarketFailure catch (e) {
+      _reportLoadFailure(e.message);
     }
+  }
+
+  /// The lists are deliberately left as they are.
+  ///
+  /// On a first load they are still null, so the whole screen becomes an error
+  /// with a retry. On a later refresh they still hold the last good data, and
+  /// replacing that with an error page would throw away something usable to
+  /// report a problem the user can already see in the snackbar.
+  void _reportLoadFailure(String message) {
+    if (!mounted) return;
+    final hadData = _requests != null;
+    setState(() => _error = message);
+    if (hadData) _say(message, isError: true);
   }
 
   /// Runs an action, then reloads so the lists reflect what actually happened
@@ -91,6 +136,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       if (mounted) _say(success);
     } on AdminFailure catch (e) {
       if (mounted) _say(e.message, isError: true);
+    } on MarketFailure catch (e) {
+      if (mounted) _say(e.message, isError: true);
     } finally {
       if (mounted) setState(() => _isBusy = false);
     }
@@ -102,9 +149,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       ..showSnackBar(
         SnackBar(
           content: Text(message),
-          backgroundColor: isError
-              ? Theme.of(context).colorScheme.error
-              : null,
+          backgroundColor: isError ? Theme.of(context).colorScheme.error : null,
         ),
       );
   }
@@ -115,166 +160,205 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       builder: (_) => const _AddCompanyDialog(),
     );
     if (name == null || name.isEmpty) return;
-    await _run(
-      () => widget.adminService.createCompany(name),
-      '$name added.',
+    await _run(() => widget.adminService.createCompany(name), '$name added.');
+  }
+
+  Future<void> _addMarket() async {
+    final companyId = await _companyForNewMarket();
+    if (companyId == null || !mounted) return;
+
+    final details = await showDialog<MarketDetails>(
+      context: context,
+      builder: (_) => const MarketFormDialog(),
     );
+    if (details == null) return;
+
+    await _run(
+      () => widget.marketService.createMarket(
+        companyId: companyId,
+        name: details.name,
+        city: details.city,
+        area: details.area,
+        address: details.address,
+      ),
+      '${details.name} added.',
+    );
+  }
+
+  /// Which company a new market belongs to.
+  ///
+  /// A company admin has exactly one and is never asked. A platform admin is
+  /// not scoped to any, so the question has to be put to them -- guessing would
+  /// file a market under the wrong tenant, which RLS then makes invisible to
+  /// the people who need it.
+  Future<String?> _companyForNewMarket() async {
+    final own = widget.profile.companyId;
+    if (own != null) return own;
+
+    final companies = _companies ?? const <CompanyOption>[];
+    if (companies.isEmpty) {
+      _say(
+        'Add a company first — a market has to belong to one.',
+        isError: true,
+      );
+      return null;
+    }
+
+    return showDialog<String>(
+      context: context,
+      builder: (context) => SimpleDialog(
+        title: const Text('Which company?'),
+        children: [
+          for (final company in companies)
+            SimpleDialogOption(
+              onPressed: () => Navigator.of(context).pop(company.id),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                child: Text(company.name),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _openMarket(PointOfSale market) async {
+    final changed = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => MarketDetailScreen(
+          market: market,
+          marketService: widget.marketService,
+          reps: _reps,
+        ),
+      ),
+    );
+    // Fridge counts and assignments are shown on the card behind, so a change
+    // in there has to be reflected out here.
+    if ((changed ?? false) && mounted) await _load();
   }
 
   @override
   Widget build(BuildContext context) {
-    final pendingCount = _requests?.length ?? 0;
-
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Shelf Monitor'),
-        actions: [
-          IconButton(
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute<void>(
-                builder: (_) =>
-                    CaptureScreen(detectionService: widget.detectionService),
-              ),
-            ),
-            icon: const Icon(Icons.photo_camera_outlined),
-            tooltip: 'Open capture',
-          ),
-          IconButton(
-            onPressed: widget.authService.signOut,
-            icon: const Icon(Icons.logout),
-            tooltip: 'Sign out',
-          ),
-        ],
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(30),
-          child: Padding(
-            padding: const EdgeInsets.only(left: 16, bottom: 10),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                [
-                  widget.profile.role.label,
-                  if (widget.profile.companyName != null)
-                    widget.profile.companyName!,
-                ].join(' · '),
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-      floatingActionButton: _isPlatformAdmin && _tab == 2
-          ? FloatingActionButton.extended(
-              onPressed: _isBusy ? null : _addCompany,
-              icon: const Icon(Icons.add),
-              label: const Text('Add company'),
-            )
-          : null,
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _tab,
-        onDestinationSelected: (i) => setState(() => _tab = i),
-        destinations: [
-          NavigationDestination(
-            icon: Badge(
+    return AdaptiveScaffold(
+      title: 'Shelf Monitor',
+      subtitle: [
+        widget.profile.role.label,
+        if (widget.profile.companyName != null) widget.profile.companyName!,
+      ].join(' · '),
+      selectedIndex: _tabIndex,
+      onDestinationSelected: (i) => setState(() => _tabIndex = i),
+      destinations: [
+        for (final tab in _tabs)
+          switch (tab) {
+            _Tab.requests => AdaptiveDestination(
+              icon: Icons.how_to_reg_outlined,
+              selectedIcon: Icons.how_to_reg,
+              label: 'Requests',
               // Requests are the only thing here that goes stale if ignored:
               // somebody is waiting on the other end of each one.
-              isLabelVisible: pendingCount > 0,
-              label: Text('$pendingCount'),
-              child: const Icon(Icons.how_to_reg_outlined),
+              badgeCount: _requests?.length ?? 0,
             ),
-            selectedIcon: const Icon(Icons.how_to_reg),
-            label: 'Requests',
-          ),
-          const NavigationDestination(
-            icon: Icon(Icons.people_outline),
-            selectedIcon: Icon(Icons.people),
-            label: 'Team',
-          ),
-          if (_isPlatformAdmin)
-            const NavigationDestination(
-              icon: Icon(Icons.apartment_outlined),
-              selectedIcon: Icon(Icons.apartment),
+            _Tab.team => const AdaptiveDestination(
+              icon: Icons.people_outline,
+              selectedIcon: Icons.people,
+              label: 'Team',
+            ),
+            _Tab.markets => const AdaptiveDestination(
+              icon: Icons.storefront_outlined,
+              selectedIcon: Icons.storefront,
+              label: 'Markets',
+            ),
+            _Tab.companies => const AdaptiveDestination(
+              icon: Icons.apartment_outlined,
+              selectedIcon: Icons.apartment,
               label: 'Companies',
             ),
-        ],
-      ),
-      body: RefreshIndicator(
-        onRefresh: _load,
-        child: _buildTab(),
-      ),
+          },
+      ],
+      actions: [
+        // Goes through a market rather than straight to the camera. An
+        // admin who photographed a shelf from here used to get a number and
+        // no way to submit it -- the capture had no fridge to belong to, so
+        // there was nothing to save it into.
+        IconButton(
+          onPressed: () => Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) => VisitStartScreen(
+                profile: widget.profile,
+                visitService: widget.visitService,
+                detectionService: widget.detectionService,
+              ),
+            ),
+          ),
+          icon: const Icon(Icons.photo_camera_outlined),
+          tooltip: 'Record a visit',
+        ),
+        IconButton(
+          onPressed: widget.authService.signOut,
+          icon: const Icon(Icons.logout),
+          tooltip: 'Sign out',
+        ),
+      ],
+      floatingActionButton: switch (_tab) {
+        _Tab.markets => FloatingActionButton.extended(
+          onPressed: _isBusy ? null : _addMarket,
+          icon: const Icon(Icons.add),
+          label: const Text('Add market'),
+        ),
+        _Tab.companies => FloatingActionButton.extended(
+          onPressed: _isBusy ? null : _addCompany,
+          icon: const Icon(Icons.add),
+          label: const Text('Add company'),
+        ),
+        _ => null,
+      },
+      body: RefreshIndicator(onRefresh: _load, child: _buildTab()),
     );
   }
 
   Widget _buildTab() {
     if (_error != null && _requests == null) {
-      return _ErrorState(message: _error!, onRetry: _load);
+      return ErrorState(message: _error!, onRetry: _load);
     }
 
     return switch (_tab) {
-      0 => AccessRequestList(
-        requests: _requests,
-        isBusy: _isBusy,
-        showCompany: _isPlatformAdmin,
-        onApprove: (user, role) => _run(
-          () => widget.adminService.approve(user.id, role),
-          '${user.displayName} approved as ${role.label.toLowerCase()}.',
-        ),
-        onDecline: (user) => _run(
-          () => widget.adminService.decline(user.id),
-          'Request from ${user.displayName} declined.',
-        ),
-      ),
-      1 => TeamList(
-        members: _members,
-        isBusy: _isBusy,
-        showCompany: _isPlatformAdmin,
-        currentUserId: widget.profile.id,
-        onSetActive: (user, active) => _run(
-          () => widget.adminService.setActive(user.id, active),
-          active
-              ? '${user.displayName} reactivated.'
-              : '${user.displayName} deactivated.',
+      _Tab.requests => ContentShell(
+        maxWidth: Breakpoints.readableWidth,
+        child: AccessRequestList(
+          requests: _requests,
+          isBusy: _isBusy,
+          showCompany: _isPlatformAdmin,
+          onApprove: (user, role) => _run(
+            () => widget.adminService.approve(user.id, role),
+            '${user.displayName} approved as ${role.label.toLowerCase()}.',
+          ),
+          onDecline: (user) => _run(
+            () => widget.adminService.decline(user.id),
+            'Request from ${user.displayName} declined.',
+          ),
         ),
       ),
-      _ => CompanyList(companies: _companies, members: _members),
+      _Tab.team => ContentShell(
+        maxWidth: Breakpoints.readableWidth,
+        child: TeamList(
+          members: _members,
+          isBusy: _isBusy,
+          showCompany: _isPlatformAdmin,
+          currentUserId: widget.profile.id,
+          onSetActive: (user, active) => _run(
+            () => widget.adminService.setActive(user.id, active),
+            active
+                ? '${user.displayName} reactivated.'
+                : '${user.displayName} deactivated.',
+          ),
+        ),
+      ),
+      _Tab.markets => MarketList(markets: _markets, onOpen: _openMarket),
+      _Tab.companies => ContentShell(
+        maxWidth: Breakpoints.readableWidth,
+        child: CompanyList(companies: _companies, members: _members),
+      ),
     };
-  }
-}
-
-class _ErrorState extends StatelessWidget {
-  final String message;
-  final Future<void> Function() onRetry;
-
-  const _ErrorState({required this.message, required this.onRetry});
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.error_outline,
-              size: 40,
-              color: theme.colorScheme.error,
-            ),
-            const SizedBox(height: 14),
-            Text(message, textAlign: TextAlign.center),
-            const SizedBox(height: 18),
-            FilledButton.icon(
-              onPressed: onRetry,
-              icon: const Icon(Icons.refresh, size: 18),
-              label: const Text('Try again'),
-            ),
-          ],
-        ),
-      ),
-    );
   }
 }
 

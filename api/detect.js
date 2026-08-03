@@ -88,6 +88,10 @@ function applyCors(res) {
   }
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  // A browser hides non-safelisted response headers from cross-origin JS unless
+  // they are named here, so without this the effective model id is readable
+  // same-origin and silently null the moment ALLOWED_ORIGIN is used.
+  res.setHeader('Access-Control-Expose-Headers', 'X-Effective-Model-Id');
 }
 
 export default async function handler(req, res) {
@@ -177,6 +181,13 @@ export default async function handler(req, res) {
     // Relay the response unchanged so the client parser is mode-agnostic.
     res.status(upstream.status);
     res.setHeader('Content-Type', 'application/json');
+    // Report which model actually ran, in a header so the body stays byte-for-
+    // byte what Roboflow sent. Without this the override above is invisible:
+    // the client would stamp every capture with the version it *asked* for while a
+    // different one produced the numbers, and since every chart groups by
+    // model_id, a server-side switch would render as a shelf collapse rather
+    // than as a model change.
+    if (inputs.model_id) res.setHeader('X-Effective-Model-Id', inputs.model_id);
     return res.send(text);
   } catch (error) {
     if (error.name === 'AbortError') {

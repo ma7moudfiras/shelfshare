@@ -156,6 +156,11 @@ class RoboflowService implements DetectionService {
   /// Base delay for exponential backoff between retries: 500ms, then 1s.
   static const Duration _baseBackoff = Duration(milliseconds: 500);
 
+  /// Header the web proxy uses to report which model it actually ran.
+  ///
+  /// Lower-case because `package:http` normalises response header names.
+  static const String _effectiveModelHeader = 'x-effective-model-id';
+
   @override
   Future<DetectionResult> detectProducts(
     Uint8List imageBytes, {
@@ -192,16 +197,20 @@ class RoboflowService implements DetectionService {
     final response = await _postWithRetries(body);
     stopwatch.stop();
 
+    // What the client asked for, unless the server said otherwise.
+    final ranModelId = response.effectiveModelId ?? parameters.modelId;
+
     // Roboflow reports `image: {width: null, height: null}` when the model finds
     // nothing, and the overlay cannot project boxes without dimensions. Decoding
     // the source image locally guarantees they are always available.
     final size = await _decodeImageSize(imageBytes);
 
     return _parser.parse(
-      response,
+      response.body,
       fallbackWidth: size?.width ?? 0,
       fallbackHeight: size?.height ?? 0,
       inferenceTime: stopwatch.elapsed,
+      effectiveModelId: ranModelId,
     );
   }
 
@@ -230,7 +239,7 @@ class RoboflowService implements DetectionService {
   ///
   /// Only retryable failures are repeated -- a 401 from a bad API key fails
   /// immediately rather than burning three attempts.
-  Future<String> _postWithRetries(String body) async {
+  Future<_ProxyResponse> _postWithRetries(String body) async {
     DetectionException? lastError;
 
     for (var attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -250,7 +259,7 @@ class RoboflowService implements DetectionService {
         const DetectionNetworkException('Detection request failed.');
   }
 
-  Future<String> _post(String body) async {
+  Future<_ProxyResponse> _post(String body) async {
     final http.Response response;
     try {
       response = await _client
@@ -273,7 +282,12 @@ class RoboflowService implements DetectionService {
       );
     }
 
-    if (response.statusCode == 200) return response.body;
+    if (response.statusCode == 200) {
+      return _ProxyResponse(
+        body: response.body,
+        effectiveModelId: response.headers[_effectiveModelHeader],
+      );
+    }
 
     throw DetectionApiException(
       _messageForStatus(response.statusCode),
@@ -285,17 +299,20 @@ class RoboflowService implements DetectionService {
 
   String _messageForStatus(int status) {
     return switch (status) {
-      400 => 'Roboflow rejected the request. The workflow parameters may not '
-          'match its current definition.',
-      401 || 403 => useProxy
-          ? 'The detection proxy rejected the request. Check ROBOFLOW_API_KEY '
-                'in the server environment.'
-          : 'Roboflow rejected the API key. Check ROBOFLOW_API_KEY in your '
-                '.env.',
-      404 => useProxy
-          ? 'Detection proxy not found at $endpoint.'
-          : 'Workflow not found. Check ROBOFLOW_WORKSPACE and '
-                'ROBOFLOW_WORKFLOW_ID in your .env.',
+      400 =>
+        'Roboflow rejected the request. The workflow parameters may not '
+            'match its current definition.',
+      401 || 403 =>
+        useProxy
+            ? 'The detection proxy rejected the request. Check ROBOFLOW_API_KEY '
+                  'in the server environment.'
+            : 'Roboflow rejected the API key. Check ROBOFLOW_API_KEY in your '
+                  '.env.',
+      404 =>
+        useProxy
+            ? 'Detection proxy not found at $endpoint.'
+            : 'Workflow not found. Check ROBOFLOW_WORKSPACE and '
+                  'ROBOFLOW_WORKFLOW_ID in your .env.',
       413 =>
         'The captured image was too large to send. Try a tighter aspect '
             'ratio, or retake the photo.',
@@ -312,4 +329,16 @@ class RoboflowService implements DetectionService {
   void dispose() {
     if (_ownsClient) _client.close();
   }
+}
+
+/// A successful detection response, plus what the server said about it.
+///
+/// The body alone is not enough: the proxy may substitute a different model
+/// version than the one requested, and that substitution has to reach the row
+/// that gets written or the reporting silently lies about its own provenance.
+class _ProxyResponse {
+  final String body;
+  final String? effectiveModelId;
+
+  const _ProxyResponse({required this.body, this.effectiveModelId});
 }

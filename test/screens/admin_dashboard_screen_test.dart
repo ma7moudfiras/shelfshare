@@ -3,8 +3,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shelf_monitor/models/company_option.dart';
 import 'package:shelf_monitor/models/user_profile.dart';
 import 'package:shelf_monitor/screens/admin_dashboard_screen.dart';
+import 'package:shelf_monitor/screens/visit_start_screen.dart';
 import 'package:shelf_monitor/services/admin_service.dart';
 
+import '../support/fake_services.dart';
 import 'auth_gate_test.dart' show FakeAuthService;
 
 class FakeAdminService implements AdminService {
@@ -70,13 +72,14 @@ class FakeAdminService implements AdminService {
   Future<void> createCompany(String name) async => createdCompanies.add(name);
 }
 
-UserProfile requester(String id, String email, {String? company}) => UserProfile(
-  id: id,
-  role: UserRole.pending,
-  email: email,
-  requestedCompanyId: 'c-unipal',
-  requestedCompanyName: company ?? 'UniPal',
-);
+UserProfile requester(String id, String email, {String? company}) =>
+    UserProfile(
+      id: id,
+      role: UserRole.pending,
+      email: email,
+      requestedCompanyId: 'c-unipal',
+      requestedCompanyName: company ?? 'UniPal',
+    );
 
 UserProfile person(
   UserRole role, {
@@ -107,6 +110,8 @@ void main() {
     WidgetTester tester, {
     required UserProfile admin,
     FakeAdminService? service,
+    FakeMarketService? markets,
+    FakeVisitService? visits,
   }) async {
     final adminService = service ?? FakeAdminService();
     await tester.pumpWidget(
@@ -115,6 +120,8 @@ void main() {
           profile: admin,
           authService: FakeAuthService(),
           adminService: adminService,
+          marketService: markets ?? FakeMarketService(),
+          visitService: visits ?? FakeVisitService(),
         ),
       ),
     );
@@ -325,9 +332,9 @@ void main() {
       await settle(tester);
 
       expect(
-        tester.widget<FilledButton>(
-          find.widgetWithText(FilledButton, 'Add'),
-        ).onPressed,
+        tester
+            .widget<FilledButton>(find.widgetWithText(FilledButton, 'Add'))
+            .onPressed,
         isNull,
       );
     });
@@ -347,5 +354,55 @@ void main() {
     await settle(tester);
 
     expect(find.text('No one is waiting'), findsOneWidget);
+  });
+
+  group('recording a visit', () {
+    // The complaint this exists for: the camera button opened a bare capture
+    // screen, so an admin photographed a shelf, got a number, and had nowhere
+    // to submit it -- the capture had no fridge to belong to.
+    testWidgets('the camera button goes through a market, not the camera', (
+      tester,
+    ) async {
+      await pump(
+        tester,
+        admin: companyAdmin,
+        visits: FakeVisitService(marketList: [market()]),
+      );
+
+      await tester.tap(find.byTooltip('Record a visit'));
+      await settle(tester);
+
+      expect(find.byType(VisitStartScreen), findsOneWidget);
+      expect(find.text('Record a visit'), findsWidgets);
+      expect(find.text('Carrefour City'), findsOneWidget);
+    });
+
+    // Sign-out belongs to the root screen a rep lands on, not to a route
+    // pushed on top of a dashboard that already has one.
+    testWidgets('the pushed visit screen offers no second sign out', (
+      tester,
+    ) async {
+      await pump(
+        tester,
+        admin: companyAdmin,
+        visits: FakeVisitService(marketList: [market()]),
+      );
+
+      await tester.tap(find.byTooltip('Record a visit'));
+      await settle(tester);
+
+      expect(find.byTooltip('Sign out'), findsNothing);
+    });
+
+    testWidgets('an admin with no markets is told how to make one', (
+      tester,
+    ) async {
+      await pump(tester, admin: companyAdmin, visits: FakeVisitService());
+
+      await tester.tap(find.byTooltip('Record a visit'));
+      await settle(tester);
+
+      expect(find.textContaining('Add a market'), findsOneWidget);
+    });
   });
 }

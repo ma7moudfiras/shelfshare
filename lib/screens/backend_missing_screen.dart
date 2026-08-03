@@ -21,11 +21,7 @@ class BackendMissingScreen extends StatelessWidget {
   /// not re-initialisable in place.
   final VoidCallback? onRetry;
 
-  const BackendMissingScreen({
-    super.key,
-    required this.status,
-    this.onRetry,
-  });
+  const BackendMissingScreen({super.key, required this.status, this.onRetry});
 
   bool get _isUnreachable => status == BackendStatus.unreachable;
 

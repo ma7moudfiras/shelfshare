@@ -31,6 +31,13 @@ v9 → 2, v11 → 0 on one image). Without `model_id` on the row, swapping model
 would render as a shelf collapse in every chart. Because photos are retained,
 history can also be re-run through a newer model to rebuild a comparable series.
 
+The version stored is the one that *ran*, not the one the client asked for. The
+web proxy may override `model_id` from its own environment so the deployed model
+can be switched without rebuilding, and it reports what it used back in an
+`X-Effective-Model-Id` header. Recording the request instead of the result would
+make a server-side model switch indistinguishable from a collapse in shelf
+share — the exact failure this column exists to prevent.
+
 **Sections are fixed at setup, not chosen per visit.** A fridge split three ways
 one week and two the next produces a trend line that means nothing. Every fridge
 gets at least one section via trigger; single-section fridges never show section
@@ -41,6 +48,15 @@ are the raw prediction and are never deleted; a rep rejecting a false positive
 sets `removed=true`. The submitted set is `removed = false`. An editable number
 is a gameable number, so the original is always recoverable — and a corrected
 box is a verified training label.
+
+A hand-added facing (`origin='manual'`) carries a **synthetic box**, sized to the
+median facing of the same class in that capture. There is no way to know where a
+missed item sat, and asking someone to draw a rectangle at a fridge door is not
+realistic. A zero-area box would have been the honest-looking choice and the
+wrong one: Share of Shelf is area-based, so the correction would have raised the
+count while leaving the number the customer actually reads untouched. `origin`
+is what marks the geometry as inferred; `confidence` is null, because a person
+asserting a facing is not a probability.
 
 **Points of sale are per-company.** If two tenants both sell into the same
 supermarket, that is two rows. Isolation is easier to get right than to repair.

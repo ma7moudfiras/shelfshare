@@ -25,8 +25,7 @@ class _FakeAuth implements GoTrueClient {
   Future<void> close() => _events.close();
 
   @override
-  dynamic noSuchMethod(Invocation invocation) =>
-      super.noSuchMethod(invocation);
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
 class _FakeClient implements SupabaseClient {
@@ -38,8 +37,7 @@ class _FakeClient implements SupabaseClient {
   GoTrueClient get auth => _auth;
 
   @override
-  dynamic noSuchMethod(Invocation invocation) =>
-      super.noSuchMethod(invocation);
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
 void main() {

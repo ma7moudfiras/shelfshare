@@ -125,7 +125,10 @@ class DetectionPainter extends CustomPainter {
       RRect.fromRectAndRadius(chip, const Radius.circular(3)),
       Paint()..color = color,
     );
-    painter.paint(canvas, Offset(chip.left + _labelPaddingX, chip.top + _labelPaddingY));
+    painter.paint(
+      canvas,
+      Offset(chip.left + _labelPaddingX, chip.top + _labelPaddingY),
+    );
   }
 
   @override

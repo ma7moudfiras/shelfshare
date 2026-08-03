@@ -15,9 +15,8 @@ class AnalysisSettings {
 
   /// Minimum score a detection must reach, 0.0 - 1.0.
   ///
-  /// The workflow's own default is 0.4, which is high enough to hide
-  /// under-represented classes entirely. Exposing it is what lets a shelf with
-  /// several products stop reporting only the strongest one.
+  /// Exposing this is what lets a shelf with several products stop reporting
+  /// only the strongest one.
   final double confidence;
 
   const AnalysisSettings({
@@ -26,7 +25,14 @@ class AnalysisSettings {
     this.confidence = defaultConfidence,
   });
 
-  static const double defaultConfidence = 0.4;
+  /// Deliberately stricter than the workflow's own 0.4.
+  ///
+  /// A count that is reported to a customer should err towards missing a
+  /// genuine facing rather than inventing one: an under-count is visible to the
+  /// rep standing at the shelf and gets corrected, whereas a phantom detection
+  /// looks exactly like a real one and quietly inflates the number. 0.4 was
+  /// producing enough of the latter to make the totals hard to defend.
+  static const double defaultConfidence = 0.7;
 
   bool get showsAllProducts => selectedClasses.isEmpty;
 
@@ -121,7 +127,8 @@ class _AnalysisSettingsSheetState extends State<AnalysisSettingsSheet> {
                 children: [
                   _SectionHeader(
                     title: 'Model version',
-                    subtitle: 'Newer versions train on more images. Metrics '
+                    subtitle:
+                        'Newer versions train on more images. Metrics '
                         'are mAP@50 — Roboflow’s dashboard headlines the '
                         'stricter mAP50-95, so numbers there read lower.',
                   ),
@@ -139,9 +146,11 @@ class _AnalysisSettingsSheetState extends State<AnalysisSettingsSheet> {
                   _SectionHeader(
                     title: 'Minimum confidence',
                     trailing: '${(_settings.confidence * 100).round()}%',
-                    subtitle: 'Lower this to reveal products the model is less '
+                    subtitle:
+                        'Lower this to reveal products the model is less '
                         'sure about. Classes with fewer training images often '
-                        'score below the default 40%.',
+                        'score below the default '
+                        '${(AnalysisSettings.defaultConfidence * 100).round()}%.',
                   ),
                   Slider(
                     value: _settings.confidence,
@@ -172,9 +181,14 @@ class _AnalysisSettingsSheetState extends State<AnalysisSettingsSheet> {
               top: false,
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
-                child: FilledButton(
-                  onPressed: () => Navigator.of(context).pop(_settings),
-                  child: const Text('Apply'),
+                // Full width is stated here rather than inherited from the
+                // button theme, which only sets a height floor.
+                child: SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                    onPressed: () => Navigator.of(context).pop(_settings),
+                    child: const Text('Apply'),
+                  ),
                 ),
               ),
             ),
@@ -198,13 +212,14 @@ class _AnalysisSettingsSheetState extends State<AnalysisSettingsSheet> {
       spacing: 8,
       runSpacing: 8,
       children: [
+        // Colours come from the chip theme, which gives selected and unselected
+        // chips genuinely different fills and foregrounds. The translucent
+        // overrides that used to live here landed a few points away from the
+        // dark background and were close to unreadable.
         FilterChip(
           label: const Text('All products'),
           selected: _settings.showsAllProducts,
           onSelected: (_) => _selectAllProducts(),
-          backgroundColor: theme.colorScheme.surfaceContainerHighest
-              .withValues(alpha: 0.4),
-          selectedColor: theme.colorScheme.primary.withValues(alpha: 0.18),
         ),
         for (final className in widget.availableClasses)
           FilterChip(
@@ -219,9 +234,6 @@ class _AnalysisSettingsSheetState extends State<AnalysisSettingsSheet> {
               ),
             ),
             onSelected: (s) => _toggleClass(className, s),
-            backgroundColor: theme.colorScheme.surfaceContainerHighest
-                .withValues(alpha: 0.4),
-            selectedColor: theme.colorScheme.primary.withValues(alpha: 0.18),
           ),
       ],
     );

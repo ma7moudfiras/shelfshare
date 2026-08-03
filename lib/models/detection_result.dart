@@ -32,6 +32,16 @@ class DetectionResult {
   /// Wall-clock time the inference call took.
   final Duration? inferenceTime;
 
+  /// The model version that actually produced these detections, when the
+  /// server reported it.
+  ///
+  /// Worth distinguishing from the version the client *asked* for: the web
+  /// proxy can override `model_id` server-side so the deployed model can be
+  /// switched without rebuilding. Every chart groups by model, so recording the
+  /// requested version while a different one ran would show a model swap as a
+  /// shelf collapse.
+  final String? effectiveModelId;
+
   DetectionResult({
     required this.detections,
     required this.imageWidth,
@@ -39,6 +49,7 @@ class DetectionResult {
     this.annotatedImage,
     this.sourceOutputKey,
     this.inferenceTime,
+    this.effectiveModelId,
   });
 
   /// A result with no detections, e.g. an image containing no known products.
@@ -46,7 +57,8 @@ class DetectionResult {
     : detections = const [],
       annotatedImage = null,
       sourceOutputKey = null,
-      inferenceTime = null;
+      inferenceTime = null,
+      effectiveModelId = null;
 
   bool get isEmpty => detections.isEmpty;
   bool get isNotEmpty => detections.isNotEmpty;
@@ -101,6 +113,7 @@ class DetectionResult {
       annotatedImage: annotatedImage,
       sourceOutputKey: sourceOutputKey,
       inferenceTime: inferenceTime,
+      effectiveModelId: effectiveModelId,
     );
   }
 

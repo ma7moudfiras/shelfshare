@@ -2,7 +2,10 @@ import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../config/app_config.dart';
 import '../models/capture_aspect_ratio.dart';
+import '../models/capture_draft.dart';
+import '../models/capture_target.dart';
 import '../models/detection_result.dart';
 import '../models/model_option.dart';
 import '../services/camera_service.dart';
@@ -10,7 +13,9 @@ import '../services/detection_exception.dart';
 import '../services/detection_service.dart';
 import '../services/image_processor.dart';
 import '../services/model_catalog_service.dart';
+import '../services/visit_service.dart';
 import '../theme/app_theme.dart';
+import 'capture_review_screen.dart';
 import '../widgets/analysis_settings_sheet.dart';
 import '../widgets/aspect_ratio_selector.dart';
 import '../widgets/camera_stage.dart';
@@ -34,12 +39,25 @@ class CaptureScreen extends StatefulWidget {
   /// real JPEG work, which is far too slow to complete inside a pumped frame.
   final ImageProcessor? imageProcessor;
 
+  /// What this capture is being recorded against.
+  ///
+  /// Null puts the screen in preview mode: it analyses and displays, and saves
+  /// nothing. That is the right behaviour for an admin trying the camera out
+  /// from the dashboard, who has no open visit and whose test shots must not
+  /// land in a customer's numbers.
+  final CaptureTarget? target;
+
+  /// Required whenever [target] is set.
+  final VisitService? visitService;
+
   const CaptureScreen({
     super.key,
     this.detectionService,
     this.cameraService,
     this.catalogService,
     this.imageProcessor,
+    this.target,
+    this.visitService,
   });
 
   @override
@@ -271,6 +289,62 @@ class _CaptureScreenState extends State<CaptureScreen>
     if (needsReanalysis && _capturedBytes != null) await _analyze();
   }
 
+  /// Opens the review screen, where the count can be corrected before it is
+  /// stored, and writes the capture when the rep accepts it.
+  Future<void> _openReview() async {
+    final target = widget.target;
+    final service = widget.visitService;
+    final bytes = _capturedBytes;
+    final result = _visibleResult;
+    if (target == null || service == null || bytes == null || result == null) {
+      return;
+    }
+
+    final saved = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (reviewContext) => CaptureReviewScreen(
+          imageBytes: bytes,
+          initialDraft: CaptureDraft.fromResult(result),
+          targetLabel: target.label,
+          availableClasses: _classChoices,
+          onSave: (draft) async {
+            try {
+              await service.recordCapture(
+                visitId: target.visitId,
+                companyId: target.companyId,
+                fridgeId: target.fridge.id,
+                fridgeSectionId: target.sectionId,
+                // What actually ran, which the web proxy is free to override.
+                modelId:
+                    result.effectiveModelId ??
+                    _settings.modelId ??
+                    AppConfig.modelId,
+                confidenceThreshold: _settings.confidence,
+                draft: draft,
+              );
+              if (reviewContext.mounted) {
+                Navigator.of(reviewContext).pop(true);
+              }
+            } on VisitFailure catch (e) {
+              if (!reviewContext.mounted) return;
+              ScaffoldMessenger.of(reviewContext)
+                ..hideCurrentSnackBar()
+                ..showSnackBar(
+                  SnackBar(
+                    content: Text(e.message),
+                    backgroundColor: Theme.of(reviewContext).colorScheme.error,
+                  ),
+                );
+            }
+          },
+        ),
+      ),
+    );
+
+    // Hand the result back to the fridge list so it can mark this one done.
+    if ((saved ?? false) && mounted) Navigator.of(context).pop(true);
+  }
+
   void _openFullScreen() {
     final bytes = _capturedBytes;
     if (bytes == null) return;
@@ -301,14 +375,18 @@ class _CaptureScreenState extends State<CaptureScreen>
 
   /// Tears the preview down and brings it back up.
   ///
-  /// A browser can leave a camera stream dead while the controller still
-  /// reports it as running, and nothing in the app can detect that -- the
-  /// preview is a platform view we do not get to inspect. Rather than leave the
-  /// operator staring at a black rectangle with no way out, this is exposed as
-  /// a button they can always reach.
+  /// Reached from the camera error state rather than from a permanent button in
+  /// the chrome. A browser can also leave a stream dead while the controller
+  /// still reports it as running, which this would fix but nothing can detect
+  /// -- the preview is a platform view we do not get to inspect.
   Future<void> _restartCamera() async {
     _cameraService.dispose();
-    if (mounted) setState(() => _isCameraReady = false);
+    if (mounted) {
+      setState(() {
+        _isCameraReady = false;
+        _cameraError = null;
+      });
+    }
     await _initializeCamera();
   }
 
@@ -341,9 +419,14 @@ class _CaptureScreenState extends State<CaptureScreen>
             _buildStage(),
             _TopBar(
               onSettings: _openSettings,
-              onClose: hasCapture ? _reset : null,
+              targetLabel: widget.target?.label,
               onFullScreen: hasCapture ? _openFullScreen : null,
-              onRestartCamera: hasCapture ? null : _restartCamera,
+              // Only when there is somewhere to go back to. A sales rep who
+              // lands straight on this screen has no dashboard behind it, and
+              // an arrow that pops to a blank route is worse than no arrow.
+              onBack: Navigator.of(context).canPop()
+                  ? () => Navigator.of(context).maybePop()
+                  : null,
             ),
             if (!hasCapture && _cameraError == null)
               Positioned(
@@ -359,9 +442,7 @@ class _CaptureScreenState extends State<CaptureScreen>
               ),
             Align(
               alignment: Alignment.bottomCenter,
-              child: hasCapture
-                  ? _buildResultsSheet()
-                  : _buildCaptureBar(),
+              child: hasCapture ? _buildResultsSheet() : _buildCaptureBar(),
             ),
           ],
         ),
@@ -459,9 +540,7 @@ class _CaptureScreenState extends State<CaptureScreen>
         return Container(
           decoration: BoxDecoration(
             color: AppTheme.surfaceDarkElevated,
-            borderRadius: const BorderRadius.vertical(
-              top: Radius.circular(24),
-            ),
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
             boxShadow: [
               BoxShadow(
                 color: Colors.black.withValues(alpha: 0.4),
@@ -485,13 +564,15 @@ class _CaptureScreenState extends State<CaptureScreen>
                 padding: const EdgeInsets.fromLTRB(20, 0, 12, 8),
                 child: Row(
                   children: [
-                    Text(
-                      'Analysis',
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
+                    Expanded(
+                      child: Text(
+                        'Analysis',
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                     ),
-                    const Spacer(),
                     TextButton.icon(
                       onPressed: _reset,
                       icon: const Icon(Icons.refresh, size: 18),
@@ -511,6 +592,30 @@ class _CaptureScreenState extends State<CaptureScreen>
                   scrollController: scrollController,
                 ),
               ),
+              if (_result != null && !_isAnalyzing && _errorMessage == null)
+                SafeArea(
+                  top: false,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
+                    child: widget.target != null
+                        ? SizedBox(
+                            width: double.infinity,
+                            child: FilledButton.icon(
+                              onPressed: _openReview,
+                              icon: const Icon(
+                                Icons.fact_check_outlined,
+                                size: 18,
+                              ),
+                              label: const Text('Check and submit'),
+                            ),
+                          )
+                        // Preview mode has nowhere to file this. Saying so is
+                        // the whole point: a missing submit button reads as a
+                        // broken app, and someone who photographs a shelf
+                        // believing it was recorded has lost the visit.
+                        : const _PreviewOnlyNotice(),
+                  ),
+                ),
             ],
           ),
         );
@@ -545,10 +650,22 @@ class _CaptureScreenState extends State<CaptureScreen>
                 ),
               ),
               const SizedBox(height: 20),
-              FilledButton.tonalIcon(
-                onPressed: _onPickFromGallery,
-                icon: const Icon(Icons.photo_library_outlined, size: 18),
-                label: const Text('Choose a photo'),
+              Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                alignment: WrapAlignment.center,
+                children: [
+                  FilledButton.icon(
+                    onPressed: _restartCamera,
+                    icon: const Icon(Icons.refresh, size: 18),
+                    label: const Text('Try camera again'),
+                  ),
+                  FilledButton.tonalIcon(
+                    onPressed: _onPickFromGallery,
+                    icon: const Icon(Icons.photo_library_outlined, size: 18),
+                    label: const Text('Choose a photo'),
+                  ),
+                ],
               ),
             ],
           ),
@@ -559,23 +676,37 @@ class _CaptureScreenState extends State<CaptureScreen>
 }
 
 /// Floating controls along the top edge.
+/// Chrome over the viewfinder: where you are, and the controls.
+///
+/// The scrim stays dark in both themes. It sits over a photograph of a fridge,
+/// and a light bar over a bright shelf is unreadable -- matching the app's
+/// surface colour here would cost legibility for consistency nobody benefits
+/// from. What follows the theme is everything that can: type scale, corner
+/// radius, and the accent used for state.
 class _TopBar extends StatelessWidget {
   final VoidCallback onSettings;
-  final VoidCallback? onClose;
   final VoidCallback? onFullScreen;
 
-  /// Null while a capture is on screen, where there is no preview to restart.
-  final VoidCallback? onRestartCamera;
+  /// Null when this screen is the root and there is nothing behind it.
+  final VoidCallback? onBack;
+
+  /// What is being photographed, e.g. `Entrance cooler · Shelf 2`.
+  ///
+  /// Null in preview mode, where there is no subject to name.
+  final String? targetLabel;
 
   const _TopBar({
     required this.onSettings,
-    this.onClose,
     this.onFullScreen,
-    this.onRestartCamera,
+    this.onBack,
+    this.targetLabel,
   });
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final target = targetLabel;
+
     return Align(
       alignment: Alignment.topCenter,
       child: Container(
@@ -583,57 +714,118 @@ class _TopBar extends StatelessWidget {
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [Color(0xA6000000), Colors.transparent],
+            colors: [Color(0xB3000000), Colors.transparent],
           ),
         ),
         child: SafeArea(
           bottom: false,
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 6, 6, 20),
+            // Even inset on both sides, so the controls sit square in the
+            // corner rather than drifting in from it.
+            padding: const EdgeInsets.fromLTRB(10, 8, 10, 22),
             child: Row(
               children: [
-                const Text(
-                  'Shelf Monitor',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 17,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: -0.2,
+                if (onBack != null) ...[
+                  _GlassIconButton(
+                    icon: Icons.arrow_back,
+                    tooltip: 'Back',
+                    onPressed: onBack!,
+                  ),
+                  const SizedBox(width: 8),
+                ] else
+                  const SizedBox(width: 6),
+
+                // The subject, not the app name. A rep at a fridge door needs
+                // to know which shelf this shot is being filed against; they
+                // already know what app they opened.
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        target ?? 'Shelf Monitor',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: -0.1,
+                        ),
+                      ),
+                      if (target != null)
+                        Text(
+                          'Photographing',
+                          maxLines: 1,
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            color: Colors.white70,
+                          ),
+                        ),
+                    ],
                   ),
                 ),
-                const Spacer(),
-                if (onFullScreen != null)
+                const SizedBox(width: 8),
+
+                if (onFullScreen != null) ...[
                   _GlassIconButton(
                     icon: Icons.fullscreen,
                     tooltip: 'View full screen',
                     onPressed: onFullScreen!,
                   ),
-                if (onFullScreen != null) const SizedBox(width: 8),
-                if (onRestartCamera != null) ...[
-                  _GlassIconButton(
-                    icon: Icons.cameraswitch_outlined,
-                    tooltip: 'Restart camera',
-                    onPressed: onRestartCamera!,
-                  ),
                   const SizedBox(width: 8),
                 ],
+                // Always last, so the settings control holds the same corner
+                // whether or not a photo has been taken. Discarding used to sit
+                // to its right and push it inward after every capture -- a
+                // control that moves is a control you have to hunt for, and it
+                // duplicated the Retake button already in the results sheet.
                 _GlassIconButton(
                   icon: Icons.tune,
-                  tooltip: 'Analysis settings',
+                  tooltip: 'Model and product filters',
                   onPressed: onSettings,
                 ),
-                if (onClose != null) ...[
-                  const SizedBox(width: 8),
-                  _GlassIconButton(
-                    icon: Icons.close,
-                    tooltip: 'Discard capture',
-                    onPressed: onClose!,
-                  ),
-                ],
               ],
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Explains why a capture taken outside a visit cannot be submitted.
+class _PreviewOnlyNotice extends StatelessWidget {
+  const _PreviewOnlyNotice();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            Icons.info_outline,
+            size: 18,
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'Preview only — this is not being saved. To record a shelf, '
+              'start from a market so the photo has a fridge to belong to.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+                height: 1.35,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -656,14 +848,26 @@ class _GlassIconButton extends StatelessWidget {
     return Tooltip(
       message: tooltip,
       child: Material(
-        color: Colors.black.withValues(alpha: 0.4),
+        color: Colors.black.withValues(alpha: 0.45),
         shape: const CircleBorder(),
+        clipBehavior: Clip.antiAlias,
         child: InkWell(
           onTap: onPressed,
           customBorder: const CircleBorder(),
-          child: Padding(
-            padding: const EdgeInsets.all(9),
-            child: Icon(icon, color: Colors.white, size: 21),
+          // 40x40: the smallest target that still clears the accessibility
+          // floor for a thumb, which the previous 39px sizing sat just under.
+          child: Ink(
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              // A hairline keeps the button findable against a blown-out
+              // highlight, where a dark translucent fill disappears.
+              border: Border.all(color: Colors.white24, width: 0.5),
+            ),
+            child: SizedBox(
+              width: 40,
+              height: 40,
+              child: Icon(icon, color: Colors.white, size: 20),
+            ),
           ),
         ),
       ),

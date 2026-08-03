@@ -7,6 +7,8 @@ import 'screens/backend_missing_screen.dart';
 import 'services/admin_service.dart';
 import 'services/auth_storage.dart';
 import 'services/auth_service.dart';
+import 'services/market_service.dart';
+import 'services/visit_service.dart';
 import 'services/detection_service.dart';
 import 'services/roboflow_service.dart';
 import 'theme/app_theme.dart';
@@ -95,6 +97,8 @@ class _ShelfMonitorAppState extends State<ShelfMonitorApp> {
   DetectionService? _detectionService;
   AuthService? _authService;
   AdminService? _adminService;
+  MarketService? _marketService;
+  VisitService? _visitService;
   late BackendStatus _backend = widget.backend;
   bool _isRetrying = false;
 
@@ -116,6 +120,8 @@ class _ShelfMonitorAppState extends State<ShelfMonitorApp> {
       // for Supabase.instance during build -- fine in the app, but it makes
       // the gate impossible to render in a test without a live client.
       _adminService = SupabaseAdminService();
+      _marketService = SupabaseMarketService();
+      _visitService = SupabaseVisitService();
     }
   }
 
@@ -160,6 +166,8 @@ class _ShelfMonitorAppState extends State<ShelfMonitorApp> {
           : AuthGate(
               authService: authService,
               adminService: _adminService,
+              marketService: _marketService,
+              visitService: _visitService,
               detectionService: _detectionService,
             ),
     );

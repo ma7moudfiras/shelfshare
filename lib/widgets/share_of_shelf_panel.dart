@@ -28,16 +28,31 @@ class ShareOfShelfPanel extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        // Both halves flex: with a fixed title and a Spacer, a wide count
+        // ("128 items · 6 brands") pushed the row past the edge on a narrow
+        // phone, and an overflowing row clips rather than wraps.
         Row(
           children: [
-            Text('Share of Shelf', style: theme.textTheme.titleSmall),
-            const Spacer(),
-            Text(
-              '${shareOfShelf.detectionCount} items · '
-              '${shareOfShelf.classCount} '
-              '${shareOfShelf.classCount == 1 ? "brand" : "brands"}',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
+            Flexible(
+              child: Text(
+                'Share of Shelf',
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.titleSmall,
+              ),
+            ),
+            const SizedBox(width: 12),
+            // Tight, so the count stays flush right instead of shrink-wrapping
+            // against the title.
+            Expanded(
+              child: Text(
+                '${shareOfShelf.detectionCount} items · '
+                '${shareOfShelf.classCount} '
+                '${shareOfShelf.classCount == 1 ? "brand" : "brands"}',
+                textAlign: TextAlign.end,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
               ),
             ),
           ],

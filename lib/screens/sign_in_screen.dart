@@ -259,14 +259,6 @@ class _SignInScreenState extends State<SignInScreen> {
                             : () => _run(widget.authService.signInWithGoogle),
                         icon: const Icon(Icons.g_mobiledata, size: 26),
                         label: const Text('Continue with Google'),
-                        style: OutlinedButton.styleFrom(
-                          minimumSize: const Size.fromHeight(48),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(
-                              AppTheme.radiusSmall,
-                            ),
-                          ),
-                        ),
                       ),
 
                       const SizedBox(height: 24),

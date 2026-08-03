@@ -14,7 +14,11 @@ class CompanyList extends StatelessWidget {
   final List<CompanyOption>? companies;
   final List<UserProfile>? members;
 
-  const CompanyList({super.key, required this.companies, required this.members});
+  const CompanyList({
+    super.key,
+    required this.companies,
+    required this.members,
+  });
 
   @override
   Widget build(BuildContext context) {

@@ -39,10 +39,7 @@ class CameraStage extends StatelessWidget {
           child: SizedBox.expand(child: preview),
         ),
         Positioned.fill(
-          child: FramingMask(
-            key: const ValueKey('framing-mask'),
-            ratio: ratio,
-          ),
+          child: FramingMask(key: const ValueKey('framing-mask'), ratio: ratio),
         ),
       ],
     );
@@ -115,14 +112,28 @@ class FramingMaskPainter extends CustomPainter {
     // Drawn in every state, Full included, so this layer is never empty and the
     // engine's compositing decisions do not change with the ratio. Inset by
     // half the stroke so a full-screen frame is not clipped by the edge.
+    //
+    // Full draws the same rect fully transparent rather than skipping it. There
+    // is nothing to outline when the frame is the whole screen -- a border
+    // hugging the edge of the viewport reads as a rendering fault, not as
+    // guidance -- but dropping the call would change how many draw operations
+    // this layer contains, which is the exact thing that orphans the preview's
+    // DOM element on web. Same operations, no ink.
     canvas.drawRect(
       frame.deflate(0.75),
       Paint()
         ..style = PaintingStyle.stroke
         ..strokeWidth = 1.5
-        ..color = Colors.white.withValues(alpha: 0.85),
+        ..color = framesWholeScreen
+            ? Colors.transparent
+            : Colors.white.withValues(alpha: 0.85),
     );
   }
+
+  /// Whether the selected framing keeps the entire frame, so there is no crop
+  /// boundary worth drawing.
+  @visibleForTesting
+  bool get framesWholeScreen => ratio == null;
 
   /// Largest rect of [ratio] that fits inside [size], centred.
   ///

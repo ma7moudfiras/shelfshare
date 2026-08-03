@@ -59,7 +59,8 @@ class ShareOfShelf {
 
     for (final detection in detections) {
       final area = detection.box.area;
-      if (area <= 0) continue; // Degenerate box: ignore rather than skew totals.
+      // Degenerate box: ignore rather than skew totals.
+      if (area <= 0) continue;
 
       areaByClass.update(
         detection.className,
@@ -76,22 +77,23 @@ class ShareOfShelf {
 
     if (total <= 0) return const ShareOfShelf.empty();
 
-    final shares = areaByClass.entries
-        .map(
-          (entry) => ClassShare(
-            className: entry.key,
-            area: entry.value,
-            count: countByClass[entry.key] ?? 0,
-            fraction: entry.value / total,
-          ),
-        )
-        .toList()
-      // Largest share first; ties broken alphabetically so the order is stable
-      // across runs rather than depending on map iteration order.
-      ..sort((a, b) {
-        final byArea = b.area.compareTo(a.area);
-        return byArea != 0 ? byArea : a.className.compareTo(b.className);
-      });
+    final shares =
+        areaByClass.entries
+            .map(
+              (entry) => ClassShare(
+                className: entry.key,
+                area: entry.value,
+                count: countByClass[entry.key] ?? 0,
+                fraction: entry.value / total,
+              ),
+            )
+            .toList()
+          // Largest share first; ties broken alphabetically so the order is stable
+          // across runs rather than depending on map iteration order.
+          ..sort((a, b) {
+            final byArea = b.area.compareTo(a.area);
+            return byArea != 0 ? byArea : a.className.compareTo(b.className);
+          });
 
     return ShareOfShelf(shares: shares, totalArea: total);
   }
@@ -103,8 +105,7 @@ class ShareOfShelf {
   int get classCount => shares.length;
 
   /// Total number of detections counted across all classes.
-  int get detectionCount =>
-      shares.fold(0, (sum, share) => sum + share.count);
+  int get detectionCount => shares.fold(0, (sum, share) => sum + share.count);
 
   /// Single-line breakdown, e.g. `coca_cola: 65% | pepsi: 35%`.
   String get summaryLine =>

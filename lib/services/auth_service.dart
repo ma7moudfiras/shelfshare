@@ -126,10 +126,12 @@ class SupabaseAuthService implements AuthService {
     try {
       final row = await _client
           .from('profiles')
-          .select('id, role, company_id, full_name, email, is_active, '
-              'requested_company_id, '
-              'companies!profiles_company_id_fkey(name), '
-              'requested_company:companies!profiles_requested_company_id_fkey(name)')
+          .select(
+            'id, role, company_id, full_name, email, is_active, '
+            'requested_company_id, '
+            'companies!profiles_company_id_fkey(name), '
+            'requested_company:companies!profiles_requested_company_id_fkey(name)',
+          )
           .eq('id', user.id)
           .maybeSingle();
 
@@ -137,11 +139,9 @@ class SupabaseAuthService implements AuthService {
         // The handle_new_user trigger should always have created a row. If it
         // somehow has not, treat the user as pending rather than crashing --
         // pending grants nothing, so this fails safe.
-        _emit(UserProfile(
-          id: user.id,
-          role: UserRole.pending,
-          email: user.email,
-        ));
+        _emit(
+          UserProfile(id: user.id, role: UserRole.pending, email: user.email),
+        );
         return _profile;
       }
 
@@ -187,9 +187,7 @@ class SupabaseAuthService implements AuthService {
           .from('companies')
           .select('id, name')
           .order('name');
-      return rows
-          .map((r) => CompanyOption.fromJson(r))
-          .toList(growable: false);
+      return rows.map((r) => CompanyOption.fromJson(r)).toList(growable: false);
     } on PostgrestException catch (e) {
       debugPrint('Company list failed: ${e.message}');
       return const [];
@@ -203,12 +201,15 @@ class SupabaseAuthService implements AuthService {
 
     try {
       final withdrawing = companyId.isEmpty;
-      await _client.from('profiles').update({
-        'requested_company_id': withdrawing ? null : companyId,
-        'requested_at': withdrawing
-            ? null
-            : DateTime.now().toUtc().toIso8601String(),
-      }).eq('id', user.id);
+      await _client
+          .from('profiles')
+          .update({
+            'requested_company_id': withdrawing ? null : companyId,
+            'requested_at': withdrawing
+                ? null
+                : DateTime.now().toUtc().toIso8601String(),
+          })
+          .eq('id', user.id);
       await refreshProfile();
     } on PostgrestException catch (e) {
       throw AuthFailure('Could not send the request: ${e.message}');
