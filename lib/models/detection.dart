@@ -30,6 +30,18 @@ class Detection {
     this.trackerId,
   });
 
+  /// A copy carrying [className] instead, with the box and scores untouched.
+  ///
+  /// Used when a post-processing rule overrules the model's label -- the
+  /// geometry it measured is still the model's, so only the name changes.
+  Detection withClassName(String className) => Detection(
+    className: className,
+    confidence: confidence,
+    box: box,
+    classId: classId,
+    trackerId: trackerId,
+  );
+
   /// Confidence rendered for display, e.g. `87%`.
   String get confidenceLabel => '${(confidence * 100).round()}%';
 

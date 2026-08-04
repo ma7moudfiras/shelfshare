@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import '../config/app_config.dart';
+import '../models/can_shape_rule.dart';
 import '../models/detection_result.dart';
 import 'detection_exception.dart';
 import 'detection_service.dart';
@@ -119,6 +120,13 @@ class RoboflowService implements DetectionService {
   final bool _ownsClient;
   final WorkflowResponseParser _parser;
 
+  /// Re-labels 330 ml cans from their box proportions once the response is
+  /// parsed. Null runs the workflow's own labels through unchanged.
+  ///
+  /// See [CanShapeRule]: the classifier in the workflow cannot see the one
+  /// feature that separates the two can formats, so this decides it locally.
+  final CanShapeRule? shapeRule;
+
   /// Endpoint to POST to. Defaults to whichever mode [AppConfig] selects.
   final Uri endpoint;
 
@@ -142,6 +150,7 @@ class RoboflowService implements DetectionService {
     RoboflowParameters? parameters,
     this.timeout = const Duration(seconds: 45),
     this.maxAttempts = 3,
+    this.shapeRule = const CanShapeRule(),
     WorkflowResponseParser parser = const WorkflowResponseParser(),
   }) : _client = client ?? http.Client(),
        _ownsClient = client == null,
@@ -205,13 +214,15 @@ class RoboflowService implements DetectionService {
     // the source image locally guarantees they are always available.
     final size = await _decodeImageSize(imageBytes);
 
-    return _parser.parse(
+    final result = _parser.parse(
       response.body,
       fallbackWidth: size?.width ?? 0,
       fallbackHeight: size?.height ?? 0,
       inferenceTime: stopwatch.elapsed,
       effectiveModelId: ranModelId,
     );
+
+    return shapeRule?.applyTo(result) ?? result;
   }
 
   /// Reads the pixel dimensions of an encoded image without keeping it decoded.
