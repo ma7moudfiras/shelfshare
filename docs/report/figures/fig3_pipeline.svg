@@ -46,7 +46,7 @@
 
   <!-- crop feeds stage 2 -->
   <path d="M662 168 L662 228" stroke="#52514e" stroke-width="1.5" marker-end="url(#ar)"/>
-  <text x="672" y="202" font-size="9.5" fill="#52514e">crop</text>
+  <text x="652" y="202" font-size="9.5" fill="#52514e" text-anchor="end">crop</text>
 
   <!-- geometry branch down the left -->
   <path d="M479 174 L479 190 L200 190 L200 360 L246 360" stroke="#1baf7a" stroke-width="1.8" fill="none" stroke-dasharray="5 4" marker-end="url(#ag)"/>
@@ -70,7 +70,7 @@
 
   <!-- stage2 -> stage3 -->
   <path d="M715 292 L715 352" stroke="#52514e" stroke-width="1.5" marker-end="url(#ar)"/>
-  <text x="725" y="326" font-size="9.5" fill="#52514e">narrows candidates</text>
+  <text x="705" y="326" font-size="9.5" fill="#52514e" text-anchor="end">narrows candidates</text>
 
   <!-- ============ STAGE 3 ============ -->
   <rect x="246" y="336" width="176" height="50" rx="4" fill="#ffffff" stroke="#1baf7a" stroke-width="2"/>
