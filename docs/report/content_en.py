@@ -48,8 +48,11 @@ SECTIONS = [
         "brand, assigning each bounding box a class such as coca-cola or pepsi. This labelling scheme, "
         "while intuitive, exposed a set of structural problems that formed the analytical core of the "
         "training period and are examined in the sections that follow."),
-  ("fig", "fig1_placeholder", "A representative shelf photograph from the dataset with its annotated "
-        "bounding boxes overlaid, illustrating object density and the packaging formats under study."),
+  ("fig", "fig1_annotated_shelf", "A field capture from the dataset with its relabelled bounding boxes "
+        "overlaid; colour denotes packaging format. Beyond the density of the audit scene, the image shows "
+        "two limitations examined later: many products carry no annotation at all (Section 4), and several "
+        "boxes are assigned a format their contents contradict, the geometry having been degraded by glass "
+        "reflection and occlusion (Section 7)."),
  ]),
 
  ("2. Methodology and Scope of Work", [
@@ -173,8 +176,10 @@ SECTIONS = [
         "signal suffices alone: the visual embedding determines which product the object is, while "
         "bounding-box geometry determines which physical format it takes."),
   ("fig", "fig2_aspect_ratio", "Geometric discrimination of packaging format. Left: two containers of "
-        "identical labelling and equal volume but differing proportion. Right: the observed aspect-ratio "
-        "distribution across all 4,641 annotations, showing contiguous non-overlapping bands."),
+        "identical labelling and equal volume but differing proportion — the measured separation on which "
+        "the rule rests. Right: the ratio bands used to assign format across all 4,641 annotations. The "
+        "bands are definitional rather than discovered: the thresholds assign the class, so their "
+        "separation is a property of the scheme and not evidence for it."),
  ]),
 
  ("7. Data Quality Factors in Uncontrolled Imagery", [
@@ -296,8 +301,10 @@ SECTIONS = [
   ("p", "The interface was implemented responsively for both mobile and desktop viewports, with attention "
         "to theme contrast and legibility, reflecting the operational reality that capture occurs on "
         "handheld devices in variable store lighting while review and administration occur on desktop."),
-  ("fig", "fig4_placeholder", "Screenshots of the application: the market selection and capture screens, "
-        "and the detection editor showing a model prediction under operator review."),
+  ("fig", "fig4_app", "The application reviewing a live capture: 75 detections returned for a single "
+        "cooler, with the share-of-shelf summary computed beneath. The crowding of labels is itself "
+        "informative — it is the dense-packing regime of Section 7, and the reason an operator-facing "
+        "editor rather than an automatic commit is the appropriate design."),
  ]),
 
  ("11. Results and Outcomes", [
@@ -314,11 +321,16 @@ SECTIONS = [
         "the original scheme the detector received a mean of 774 examples per class, with the sparsest "
         "brand supported by only 131; under the class-agnostic scheme the full corpus of 4,641 boxes "
         "supports the single detection objective."),
-  ("p", "Aspect-ratio analysis further established that the four packaging formats occupy contiguous, "
-        "non-overlapping ratio bands — unknown-package below 1.0, can-std-330 between 1.0 and 2.1, "
-        "can-slim between 2.1 and 2.9, and bottle-pet above 2.9 — with class medians of 0.54, 1.73, 2.57, "
-        "and 3.26 respectively. This separation is the empirical basis for treating box geometry as a "
-        "usable discriminative signal."),
+  ("p", "The relabelling assigned formats by ratio band — unknown-package below 1.0, can-std-330 between "
+        "1.0 and 2.1, can-slim between 2.1 and 2.9, and bottle-pet above 2.9 — yielding class medians of "
+        "0.54, 1.73, 2.57, and 3.26. It should be stated plainly that these bands do not themselves "
+        "validate the approach: the thresholds define the classes, so their separation is guaranteed by "
+        "construction. The evidence that box geometry is a usable discriminative signal comes instead from "
+        "the independent side-by-side measurement reported in Section 6, where the two can formats "
+        "separated into disjoint measured clusters while the visual classifier assigned them a single "
+        "class. Inspection of the relabelled images also showed the rule mislabelling partially occluded "
+        "bottles as cans, which is the error mode Section 7 predicts and a further reason the format "
+        "assignment requires verification before use."),
   ("p", "The tangible deliverables of the training period were: a geometrically relabelled annotation set "
         "derived programmatically from the original brand-labelled corpus; a documented three-stage system "
         "architecture with a verified component-level mapping onto the production platform; and a "
@@ -326,7 +338,52 @@ SECTIONS = [
         "human verification, and share-of-shelf reporting."),
  ]),
 
- ("12. Reflection on Learning Outcomes", [
+ ("12. Challenges Encountered", [
+  ("p", "The principal difficulties of the period were not algorithmic but evidential — establishing what "
+        "the data and the tooling were actually doing, as opposed to what they were assumed to be doing."),
+  ("p", "The first was annotation ambiguity at scale. Over two-fifths of the corpus required an ambiguity "
+        "flag, and each flagged box demanded a judgement that no threshold could make automatically. "
+        "Relabelling 4,641 boxes by physical format also revealed that a purely geometric rule inherits "
+        "every defect of the box it reads: a partially occluded bottle produces a short box and is misread "
+        "as a can. Distinguishing genuine format differences from artefacts of capture consumed a "
+        "substantial share of the period, and the resulting label set still contains errors of this kind."),
+  ("p", "The second was diagnosing behaviour that configuration, not modelling, was causing. Poor coverage "
+        "of the newer brands initially appeared to be a detection failure. It was in fact governed by a "
+        "default model version trained on 27 images, long superseded but still invoked by the workflow. "
+        "Similarly, the failure to separate can formats looked like insufficient training data until the "
+        "mechanism was identified — the embedding model resizes crops to a fixed square and discards aspect "
+        "ratio before inference. In both cases the visible symptom pointed away from the actual cause."),
+  ("p", "A third, more practical difficulty was tooling friction during the dataset migration. Bulk "
+        "annotation upload through the platform API proved to have no per-image overwrite path, so a single "
+        "malformed request left one image with an empty annotation that could not be corrected "
+        "programmatically. Working within the constraints of a hosted platform — rather than assuming full "
+        "control over the data store — was itself part of the learning."),
+ ]),
+
+ ("13. Next Steps and Support Required", [
+  ("p", "The immediate technical priority is to train the class-agnostic detector on the collapsed label "
+        "set and measure it properly. To date the expected improvement rests on a statistical argument — a "
+        "sixfold increase in annotations per detection class — and not on a measured result. A held-out "
+        "evaluation reporting per-class recall and mean average precision, compared against the current "
+        "brand-classed detector, is required before the architecture can be claimed to work rather than "
+        "merely to be well-motivated."),
+  ("p", "Beyond that, three pieces of work follow in order: completing the annotations for products never "
+        "labelled at all, which no reorganisation of the label space can substitute for; assembling the "
+        "reference gallery that Stage Two depends on; and implementing the Stage Three fusion inside the "
+        "platform workflow so the rule verified client-side runs server-side as well."),
+  ("p", "Progress on these depends on inputs the training period could not supply from within. Most "
+        "consequential is a product reference set — clean single-product images for each SKU in scope, "
+        "together with a catalogue giving physical dimensions, since the geometric thresholds are currently "
+        "calibrated on two can formats and would need extending per format encountered. Also needed is "
+        "guidance on the accuracy that constitutes production readiness, as the correct operating point for "
+        "a shelf audit — and therefore how readily the system should defer to human verification — is a "
+        "commercial judgement rather than a technical one. Finally, additional field imagery spanning store "
+        "types, shelf configurations, and lighting conditions would materially improve generalisation; the "
+        "current corpus, at 213 images, is small relative to the variability the deployed system will "
+        "meet."),
+ ]),
+
+ ("14. Reflection on Learning Outcomes", [
   ("p", "The most consequential lesson of the training was that the decisive question in an applied vision "
         "system is frequently not which model performs best, but how responsibility should be divided "
         "between components. Considerable time was initially directed toward improving classification "
@@ -345,7 +402,7 @@ SECTIONS = [
         "modelling, and considerably easier to overlook."),
  ]),
 
- ("13. Conclusions", [
+ ("15. Conclusions", [
   ("p", "The principal insight of the training period is architectural rather than algorithmic: "
         "maintainability in a domain with a continuously expanding catalogue is determined less by the "
         "accuracy of any single model than by how responsibilities are partitioned between components. "

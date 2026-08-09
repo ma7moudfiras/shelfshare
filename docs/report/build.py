@@ -9,6 +9,7 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_BREAK
 from docx.enum.section import WD_SECTION
 from docx.oxml.ns import qn
 from docx.oxml import OxmlElement
+from PIL import Image as PILImage
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 FIGS = os.path.join(HERE, "figures")
@@ -161,13 +162,24 @@ class Builder:
         return str(n).translate(str.maketrans("0123456789", "٠١٢٣٤٥٦٧٨٩"))
 
     def figure(self, name, caption, meta):
-        path = os.path.join(FIGS, name + ".png")
+        path = next((os.path.join(FIGS, name + ext)
+                     for ext in (".png", ".jpg")
+                     if os.path.exists(os.path.join(FIGS, name + ext))), None)
+        if path is None:
+            raise FileNotFoundError(f"no figure image for {name!r} in {FIGS}")
+
         p = self.doc.add_paragraph()
         p.alignment = WD_ALIGN_PARAGRAPH.CENTER
         p.paragraph_format.space_before = Pt(12)
         p.paragraph_format.space_after = Pt(4)
         p.paragraph_format.keep_with_next = True
-        p.add_run().add_picture(path, width=Cm(15.4))
+        # portrait figures must be capped by height or they overflow the page
+        with PILImage.open(path) as probe:
+            ratio = probe.height / probe.width
+        if ratio > 1.15:
+            p.add_run().add_picture(path, height=Cm(15.5))
+        else:
+            p.add_run().add_picture(path, width=Cm(15.4))
 
         self.fig_n += 1
         c = self.doc.add_paragraph()

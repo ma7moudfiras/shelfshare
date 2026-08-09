@@ -48,8 +48,8 @@
   <line x1="330" y1="100" x2="330" y2="400" stroke="#d8e1ec" stroke-width="1"/>
 
   <!-- ================= RIGHT: ratio bands ================= -->
-  <text x="368" y="106" font-size="12" font-weight="bold" fill="#0b0b0b">Observed aspect-ratio distribution (n = 4,641 boxes)</text>
-  <text x="368" y="124" font-size="10" fill="#52514e">Box marks span the interquartile range; the vertical tick is the median.</text>
+  <text x="368" y="106" font-size="12" font-weight="bold" fill="#0b0b0b">Ratio bands used to assign format (n = 4,641 boxes)</text>
+  <text x="368" y="124" font-size="10" fill="#52514e">Bands are definitional — the thresholds assign the class, so the separation is by construction.</text>
 
   <!-- axis -->
   <line x1="380" y1="330" x2="856" y2="330" stroke="#52514e" stroke-width="1.2"/>
