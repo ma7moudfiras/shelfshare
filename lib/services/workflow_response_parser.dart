@@ -105,6 +105,8 @@ class WorkflowResponseParser {
       );
     }
 
+    detections = _withDetectorConfidence(detections, outputs);
+
     return DetectionResult(
       detections: detections,
       imageWidth: imageWidth,
@@ -220,6 +222,52 @@ class WorkflowResponseParser {
       classId: _toInt(map['class_id']),
       trackerId: _toInt(map['tracker_id']),
     );
+  }
+
+  /// Key of the workflow output holding Stage 1's own, pre-classification
+  /// detections -- `$steps.detect.predictions` in the workflow spec.
+  static const _rawDetectionsKey = 'raw_detections';
+
+  /// Rescales each detection's confidence by Stage 1's own detector
+  /// confidence for that same box.
+  ///
+  /// The primary `predictions` output (Stage 3's
+  /// `detections_classes_replacement`) carries the *classifier's* confidence
+  /// on the label -- a softmax over a small, fixed brand set, which stays
+  /// near-certain even on a shaky, partial crop the detector itself was
+  /// unsure was a product at all. A box the detector rated 45% confident
+  /// routinely gets classified at 99%+ by Stage 2, which reads on the label
+  /// as "100% sure" for something that was barely detected -- exactly the
+  /// symptom of lowering the detection-confidence slider and seeing newly
+  /// revealed, marginal boxes labelled near 100%. Multiplying in the
+  /// detector's own confidence -- "is this really a product" times "which
+  /// brand is it" -- makes a shaky detection read as shaky again.
+  ///
+  /// A no-op when [outputs] carries no `raw_detections` output (older
+  /// workflow versions) or its length doesn't match [detections]. Both lists
+  /// come from the same `detect` step threaded through order-preserving
+  /// crop/classify/refine steps, so a mismatch should not happen in practice
+  /// -- but silently declining beats misattributing confidence to the wrong
+  /// box.
+  List<Detection> _withDetectorConfidence(
+    List<Detection> detections,
+    Map<String, dynamic> outputs,
+  ) {
+    if (detections.isEmpty || !outputs.containsKey(_rawDetectionsKey)) {
+      return detections;
+    }
+
+    final raw = _tryReadDetections(outputs[_rawDetectionsKey]);
+    if (raw == null || raw.detections.length != detections.length) {
+      return detections;
+    }
+
+    return [
+      for (var i = 0; i < detections.length; i++)
+        detections[i].withConfidence(
+          detections[i].confidence * raw.detections[i].confidence,
+        ),
+    ];
   }
 
   /// Extracts an annotated image from an output, if it is image-shaped.

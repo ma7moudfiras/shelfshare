@@ -79,7 +79,12 @@ ROBOFLOW_BASE_URL=https://serverless.roboflow.com
       final xlEnergy = result.detections.first;
       expect(xlEnergy.className, 'xl_energy');
       expect(xlEnergy.classId, 4);
-      expect(xlEnergy.confidence, closeTo(0.9993, 0.0001));
+      // The fixture's classifier confidence is 0.9993, but the fixture also
+      // carries a raw_detections output with the detector's own confidence
+      // for this box (0.9810...). WorkflowResponseParser multiplies the two,
+      // so the displayed number reflects both stages, not just Stage 2's
+      // classifier -- see the "confidence blending" group below.
+      expect(xlEnergy.confidence, closeTo(0.9803, 0.0001));
       expect(xlEnergy.box.centerX, 212.5);
       expect(xlEnergy.box.centerY, 459.5);
       expect(xlEnergy.box.width, 77);
@@ -91,7 +96,7 @@ ROBOFLOW_BASE_URL=https://serverless.roboflow.com
       // for the rule's own dedicated coverage.
       expect(cocaCola.className, 'coca-cola-slim');
       expect(cocaCola.classId, 5);
-      expect(cocaCola.confidence, closeTo(0.9993, 0.0001));
+      expect(cocaCola.confidence, closeTo(0.961, 0.0001));
 
       // This workflow has no visualisation block, so no image comes back.
       expect(result.hasAnnotatedImage, isFalse);
@@ -233,6 +238,133 @@ ROBOFLOW_MODEL_ID=aystro-project-v2/1
       expect(inputs['detect_model_id'], 'aystro-project-v2/1');
       expect(inputs['detect_confidence'], closeTo(0.15, 1e-9));
     });
+  });
+
+  group('confidence blending against raw_detections', () {
+    test(
+      'a detection the detector was barely sure about does not read as '
+      '100% just because the classifier is confident',
+      () async {
+        final (service, _) = serviceReplaying(
+          jsonEncode({
+            'outputs': [
+              {
+                'predictions': {
+                  'image': {'width': 720, 'height': 540},
+                  'predictions': [
+                    {
+                      'x': 624.0,
+                      'y': 70.0,
+                      'width': 48.0,
+                      'height': 140.0,
+                      'confidence': 0.999,
+                      'class': 'sprite',
+                      'class_id': 2,
+                    },
+                  ],
+                },
+                'raw_detections': {
+                  'image': {'width': 720, 'height': 540},
+                  'predictions': [
+                    {
+                      'x': 624.0,
+                      'y': 70.0,
+                      'width': 48.0,
+                      'height': 140.0,
+                      'confidence': 0.21,
+                      'class': 'product',
+                      'class_id': 0,
+                    },
+                  ],
+                },
+              },
+            ],
+          }),
+        );
+
+        final result = await service.detectProducts(sampleBytes);
+
+        expect(result.count, 1);
+        expect(result.detections.single.className, 'sprite');
+        expect(
+          result.detections.single.confidence,
+          closeTo(0.999 * 0.21, 1e-9),
+        );
+      },
+    );
+
+    test(
+      'leaves confidence unchanged when the response has no raw_detections '
+      'output',
+      () async {
+        final (service, _) = serviceReplaying(
+          jsonEncode({
+            'outputs': [
+              {
+                'predictions': {
+                  'image': {'width': 720, 'height': 540},
+                  'predictions': [
+                    {
+                      'x': 624.0,
+                      'y': 70.0,
+                      'width': 48.0,
+                      'height': 140.0,
+                      'confidence': 0.75,
+                      'class': 'sprite',
+                      'class_id': 2,
+                    },
+                  ],
+                },
+              },
+            ],
+          }),
+        );
+
+        final result = await service.detectProducts(sampleBytes);
+
+        expect(result.detections.single.confidence, closeTo(0.75, 1e-9));
+      },
+    );
+
+    test(
+      'leaves confidence unchanged when raw_detections is a different '
+      'length',
+      () async {
+        // Should not happen in practice -- both outputs come from the same
+        // `detect` step -- but a parser must decline rather than misattribute
+        // confidence to the wrong box on a mismatch.
+        final (service, _) = serviceReplaying(
+          jsonEncode({
+            'outputs': [
+              {
+                'predictions': {
+                  'image': {'width': 720, 'height': 540},
+                  'predictions': [
+                    {
+                      'x': 624.0,
+                      'y': 70.0,
+                      'width': 48.0,
+                      'height': 140.0,
+                      'confidence': 0.75,
+                      'class': 'sprite',
+                      'class_id': 2,
+                    },
+                  ],
+                },
+                'raw_detections': {
+                  'image': {'width': 720, 'height': 540},
+                  'predictions': <Object>[],
+                },
+              },
+            ],
+          }),
+        );
+
+        final result = await service.detectProducts(sampleBytes);
+
+        expect(result.detections.single.confidence, closeTo(0.75, 1e-9));
+      },
+    );
   });
 
   group('response envelopes', () {
