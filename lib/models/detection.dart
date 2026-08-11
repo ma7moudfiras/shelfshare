@@ -42,6 +42,15 @@ class Detection {
     trackerId: trackerId,
   );
 
+  /// A copy carrying [confidence] instead, with everything else untouched.
+  Detection withConfidence(double confidence) => Detection(
+    className: className,
+    confidence: confidence,
+    box: box,
+    classId: classId,
+    trackerId: trackerId,
+  );
+
   /// Confidence rendered for display, e.g. `87%`.
   String get confidenceLabel => '${(confidence * 100).round()}%';
 

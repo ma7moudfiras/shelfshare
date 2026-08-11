@@ -44,6 +44,26 @@ class CanShapeRule {
   /// slim; lower it for the reverse.
   final double slimAspectRatio;
 
+  /// How many times taller than the shelf's other products a box must be
+  /// before this rule declines to force a can format onto it.
+  ///
+  /// This rule's proportions were measured on 330 ml cans, and nothing else --
+  /// a 2-litre bottle of the same brand is tall and narrow too, and can clear
+  /// [slimAspectRatio] just as easily, which is exactly what produced a
+  /// `coca-cola-slim` label on a 2-litre plastic bottle. Aspect ratio alone
+  /// cannot tell the two apart; absolute size can. A 2-litre bottle runs
+  /// roughly 2.3 - 2.6x the height of a 330 ml can, while the slim and
+  /// standard cans of one shelf photo stayed within about 15% of each other
+  /// (225 - 257 px, see the fixture in `can_shape_rule_test.dart`). 1.6 sits
+  /// comfortably between the two, so a can is never vetoed by its own
+  /// format-mate but a bottle standing among cans is.
+  ///
+  /// There is no absolute size available from a single crop -- only relative
+  /// to whatever else is on the same shelf. When the photo holds nothing else
+  /// to compare against, this check has nothing to work with and steps aside;
+  /// [shapeClassOf] then judges on aspect ratio alone, same as before.
+  final double maxHeightRatioToReference;
+
   /// Brands sold in both a standard and a slim 330 ml can, mapped to the
   /// (slim, standard) label pair to write onto the detection.
   ///
@@ -54,6 +74,7 @@ class CanShapeRule {
 
   const CanShapeRule({
     this.slimAspectRatio = 2.05,
+    this.maxHeightRatioToReference = 1.6,
     this.dualFormatBrands = const {
       'coca-cola': ('coca-cola-slim', 'coca-cola-standard'),
     },
@@ -86,14 +107,20 @@ class CanShapeRule {
 
     var changed = false;
     final refined = <Detection>[];
+    final detections = result.detections;
 
-    for (final detection in result.detections) {
+    for (var i = 0; i < detections.length; i++) {
+      final detection = detections[i];
       final clipped = _touchesFrame(
         detection,
         imageWidth: result.imageWidth,
         imageHeight: result.imageHeight,
       );
-      final shapeClass = clipped ? null : shapeClassOf(detection);
+      final tooTallForACan =
+          !clipped && _isImplausiblyTall(detection, detections, i, result);
+      final shapeClass = (clipped || tooTallForACan)
+          ? null
+          : shapeClassOf(detection);
 
       if (shapeClass == null || shapeClass == detection.className) {
         refined.add(detection);
@@ -104,6 +131,36 @@ class CanShapeRule {
     }
 
     return changed ? result.withDetections(refined) : result;
+  }
+
+  /// Whether [detection] is too tall, relative to every other unclipped box
+  /// on the same shelf, to plausibly be the same size container -- e.g. a
+  /// 2-litre bottle standing among 330 ml cans.
+  ///
+  /// Declines to veto (`false`) when there is nothing else in the photo to
+  /// compare against: a lone product's absolute pixel size carries no
+  /// information about which real-world container it is without a reference.
+  bool _isImplausiblyTall(
+    Detection detection,
+    List<Detection> all,
+    int index,
+    DetectionResult result,
+  ) {
+    final referenceHeights = <double>[
+      for (var j = 0; j < all.length; j++)
+        if (j != index &&
+            all[j].box.height > 0 &&
+            !_touchesFrame(
+              all[j],
+              imageWidth: result.imageWidth,
+              imageHeight: result.imageHeight,
+            ))
+          all[j].box.height,
+    ]..sort();
+    if (referenceHeights.isEmpty) return false;
+
+    final medianHeight = referenceHeights[referenceHeights.length ~/ 2];
+    return detection.box.height > medianHeight * maxHeightRatioToReference;
   }
 
   /// Whether the box runs into the edge of the photo, meaning the object is

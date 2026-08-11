@@ -161,24 +161,55 @@ void main() {
       final refined = rule.applyTo(
         resultOf([
           // Tall enough to read as slim, but its top is cut off at y = 0.
-          can(
-            'coca-cola',
-            width: 100,
-            height: 250,
-            centerX: 700,
-            centerY: 124,
-          ),
+          can('coca-cola', width: 100, height: 250, centerX: 700, centerY: 124),
         ]),
       );
 
       expect(refined.detections.single.className, 'coca-cola');
     });
 
-    test('unknown image dimensions do not disable the rule', () {
+    // The rule's proportions are calibrated on 330 ml cans; a 2-litre bottle
+    // of the same brand is tall and narrow too, and can clear the slim
+    // threshold just as easily -- exactly what produced a `coca-cola-slim`
+    // label on a 2-litre plastic bottle standing among cans.
+    test('a bottle standing among cans of the same brand keeps the '
+        'classifier\'s label', () {
       final refined = rule.applyTo(
         resultOf([
-          can('coca-cola', width: 100, height: 250),
-        ], imageWidth: 0, imageHeight: 0),
+          can('coca-cola', width: 98, height: 253, centerX: 300),
+          can('coca-cola', width: 104, height: 255, centerX: 500),
+          can('coca-cola', width: 137, height: 235, centerX: 700),
+          // A 2-litre bottle: roughly 2.4x a can's height, and still well
+          // past the slim aspect-ratio threshold on its own.
+          can('coca-cola', width: 95, height: 610, centerX: 900),
+        ]),
+      );
+
+      final labels = refined.detections.map((d) => d.className).toList();
+      expect(labels[0], 'coca-cola-slim');
+      expect(labels[1], 'coca-cola-slim');
+      expect(labels[2], 'coca-cola-standard');
+      expect(labels[3], 'coca-cola', reason: 'left as the classifier said it');
+    });
+
+    test('a lone detection with nothing to compare against still judges on '
+        'aspect ratio alone', () {
+      // No reference height is available -- this is the one documented
+      // limitation of a purely relative signal.
+      final refined = rule.applyTo(
+        resultOf([can('coca-cola', width: 95, height: 610)]),
+      );
+
+      expect(refined.detections.single.className, 'coca-cola-slim');
+    });
+
+    test('unknown image dimensions do not disable the rule', () {
+      final refined = rule.applyTo(
+        resultOf(
+          [can('coca-cola', width: 100, height: 250)],
+          imageWidth: 0,
+          imageHeight: 0,
+        ),
       );
 
       expect(refined.detections.single.className, 'coca-cola-slim');
