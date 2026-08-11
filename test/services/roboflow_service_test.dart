@@ -86,7 +86,10 @@ ROBOFLOW_BASE_URL=https://serverless.roboflow.com
       expect(xlEnergy.box.height, 187);
 
       final cocaCola = result.detections.last;
-      expect(cocaCola.className, 'coca-cola');
+      // Relabelled by CanShapeRule (the default shapeRule): this box's h/w
+      // is 2.425, above the 2.05 slim threshold. See can_shape_rule_test.dart
+      // for the rule's own dedicated coverage.
+      expect(cocaCola.className, 'coca-cola-slim');
       expect(cocaCola.classId, 5);
       expect(cocaCola.confidence, closeTo(0.9993, 0.0001));
 
@@ -145,11 +148,13 @@ ROBOFLOW_BASE_URL=https://serverless.roboflow.com
       final share = result.shareOfShelf;
 
       // xl_energy: 77x187 = 14399 sq px. coca-cola: 40x97 = 3880 sq px.
-      // Total 18279; xl_energy takes the larger share.
+      // Total 18279; xl_energy takes the larger share. The coca-cola
+      // detection is relabelled coca-cola-slim by CanShapeRule (h/w 2.425),
+      // which changes its class name but not its area or share.
       expect(share.classCount, 2);
       expect(share.shares.first.className, 'xl_energy');
       expect(share.shares.first.percentage, closeTo(78.77, 0.01));
-      expect(share.shares.last.className, 'coca-cola');
+      expect(share.shares.last.className, 'coca-cola-slim');
       expect(share.shares.last.percentage, closeTo(21.23, 0.01));
     });
   });
@@ -241,7 +246,8 @@ ROBOFLOW_MODEL_ID=aystro-project-v2/1
 
       expect(result.count, 2);
       expect(result.detections.first.className, 'xl_energy');
-      expect(result.detections.last.className, 'coca-cola');
+      // Relabelled by the default CanShapeRule -- see the assertion above.
+      expect(result.detections.last.className, 'coca-cola-slim');
     });
 
     test('parses a normalised "result" envelope identically', () async {

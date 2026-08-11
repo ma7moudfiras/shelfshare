@@ -1,5 +1,6 @@
 /**
- * Lists the detector project's trained model versions and its class names.
+ * Lists the detector project's trained model versions, and the brand
+ * classifier's class names.
  *
  * Exists so the app can offer a model picker without shipping a Roboflow key
  * to the browser: the key stays here, same as in api/detect.js. The response
@@ -8,12 +9,15 @@
  * GET /api/models
  *   -> { models: [{ modelId, version, name, map50, recall, images }], classes: [...] }
  *
- * Deliberately reads ROBOFLOW_DETECT_PROJECT, not ROBOFLOW_WORKFLOW_ID: since
- * aystro-detect-classify-brand runs two models (a detector and a brand
- * classifier), the workflow id is no longer a project slug you can query
- * Roboflow's `/{workspace}/{project}` versions endpoint with. The picker
- * lists the detector's versions specifically -- the brand classifier has no
- * per-call override to pick a version for.
+ * `models` and `classes` deliberately come from two DIFFERENT projects:
+ * - `models` reads ROBOFLOW_DETECT_PROJECT -- the detector's versions, since
+ *   that's the only per-call-overridable model (see api/detect.js).
+ * - `classes` reads ROBOFLOW_CLASSIFY_PROJECT -- the detector is
+ *   class-agnostic (its only class is "product"), so the real per-brand
+ *   classes the "Products" filter needs live on the classifier's project.
+ * Neither can be read from ROBOFLOW_WORKFLOW_ID: since aystro-detect-classify-
+ * brand runs two models, the workflow id is not a project slug you can query
+ * Roboflow's `/{workspace}/{project}` endpoint with at all.
  *
  * Other environment variables are the same ones api/detect.js uses; see that
  * file.
@@ -22,6 +26,7 @@
 const DEFAULTS = {
   workspace: 'ma7mouds-workspace',
   project: 'aystro-project-v2',
+  classifyProject: 'aystro-brand-classifier',
   apiBase: 'https://api.roboflow.com',
 };
 
@@ -93,6 +98,27 @@ async function fetchVersionDetail(apiBase, workspace, project, number, apiKey, s
   }
 }
 
+/**
+ * Fetches a project document and returns its `classes` map (name -> count),
+ * or an empty map on any failure.
+ *
+ * Failure here is non-fatal and separate from the model-listing failure
+ * below: losing the class list degrades the "Products" filter, it should
+ * never take the model picker down with it.
+ */
+async function fetchProjectClasses(apiBase, workspace, project, apiKey, signal) {
+  try {
+    const url =
+      `${apiBase}/${workspace}/${project}?api_key=${encodeURIComponent(apiKey)}`;
+    const res = await fetch(url, { signal });
+    if (!res.ok) return {};
+    const data = await res.json();
+    return data?.project?.classes ?? {};
+  } catch {
+    return {};
+  }
+}
+
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
 
@@ -108,6 +134,8 @@ export default async function handler(req, res) {
 
   const workspace = process.env.ROBOFLOW_WORKSPACE || DEFAULTS.workspace;
   const project = process.env.ROBOFLOW_DETECT_PROJECT || DEFAULTS.project;
+  const classifyProject =
+    process.env.ROBOFLOW_CLASSIFY_PROJECT || DEFAULTS.classifyProject;
   const apiBase = process.env.ROBOFLOW_API_BASE || DEFAULTS.apiBase;
 
   const url =
@@ -117,7 +145,16 @@ export default async function handler(req, res) {
   const timer = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT_MS);
 
   try {
-    const upstream = await fetch(url, { signal: controller.signal });
+    const [upstream, classCounts] = await Promise.all([
+      fetch(url, { signal: controller.signal }),
+      fetchProjectClasses(
+        apiBase,
+        workspace,
+        classifyProject,
+        apiKey,
+        controller.signal,
+      ),
+    ]);
     const text = await upstream.text();
 
     if (!upstream.ok) {
@@ -162,8 +199,9 @@ export default async function handler(req, res) {
     const trained = all.filter((m) => m.trained);
     const models = trained.length > 0 ? trained : all;
 
-    // `classes` is a map of name -> annotation count.
-    const classCounts = data?.project?.classes ?? {};
+    // `classes` comes from the classifier project, not the detector project
+    // above -- the detector is class-agnostic (its only class is "product"),
+    // so it has nothing meaningful to offer the "Products" filter.
     const classes = Object.keys(classCounts).sort();
 
     return res.status(200).json({ models, classes, classCounts });

@@ -106,6 +106,15 @@ class AppConfig {
   static String get detectProject =>
       _read('ROBOFLOW_DETECT_PROJECT') ?? 'aystro-project-v2';
 
+  /// Project the "Products" filter chips list classes from.
+  ///
+  /// Deliberately separate from [detectProject]: the detector is
+  /// class-agnostic (its only class is `product`), so the real per-brand
+  /// class list -- what the filter chips need -- lives on the classifier's
+  /// project instead.
+  static String get classifyProject =>
+      _read('ROBOFLOW_CLASSIFY_PROJECT') ?? 'aystro-brand-classifier';
+
   /// Explicit proxy URL, when set. Overrides the web default and lets a mobile
   /// build be pointed at the same proxy.
   static String? get proxyUrl => _read('ROBOFLOW_PROXY_URL');

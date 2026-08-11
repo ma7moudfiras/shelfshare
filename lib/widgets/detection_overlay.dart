@@ -44,17 +44,33 @@ class DetectionPainter extends CustomPainter {
   /// Hides boxes below this confidence. 0 shows everything.
   final double minConfidence;
 
+  /// Current zoom factor of an ancestor `InteractiveViewer`, or 1 outside one.
+  ///
+  /// Box positions already track a pinch-zoom correctly, because they ride
+  /// the same transform as the image. Line weight and label text would too --
+  /// an `InteractiveViewer` scales its whole child as one layer, so a fixed
+  /// stroke/font size painted here gets visually magnified right along with
+  /// the photo, and at high zoom a thin box outline reads as a thick block.
+  /// Dividing by [viewScale] before painting cancels that out, so strokes and
+  /// labels stay a constant, readable size on screen at any zoom level.
+  final double viewScale;
+
   const DetectionPainter({
     required this.detections,
     required this.imageWidth,
     required this.imageHeight,
     this.minConfidence = 0,
+    this.viewScale = 1,
   });
 
   static const double _strokeWidth = 2.5;
   static const double _labelFontSize = 12;
   static const double _labelPaddingX = 5;
   static const double _labelPaddingY = 3;
+
+  /// Never divide by less than 1 -- an `InteractiveViewer` below its own
+  /// minScale, or a caller passing 0, must not inflate these instead.
+  double get _scale => viewScale < 1 ? 1 : viewScale;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -82,7 +98,7 @@ class DetectionPainter extends CustomPainter {
       RRect.fromRectAndRadius(rect, const Radius.circular(3)),
       Paint()
         ..style = PaintingStyle.stroke
-        ..strokeWidth = _strokeWidth
+        ..strokeWidth = _strokeWidth / _scale
         ..color = color,
     );
   }
@@ -94,20 +110,24 @@ class DetectionPainter extends CustomPainter {
     Detection detection,
     Color color,
   ) {
+    final fontSize = _labelFontSize / _scale;
+    final paddingX = _labelPaddingX / _scale;
+    final paddingY = _labelPaddingY / _scale;
+
     final painter = TextPainter(
       text: TextSpan(
         text: detection.displayLabel,
-        style: const TextStyle(
+        style: TextStyle(
           color: Colors.white,
-          fontSize: _labelFontSize,
+          fontSize: fontSize,
           fontWeight: FontWeight.w600,
         ),
       ),
       textDirection: TextDirection.ltr,
     )..layout();
 
-    final chipWidth = painter.width + _labelPaddingX * 2;
-    final chipHeight = painter.height + _labelPaddingY * 2;
+    final chipWidth = painter.width + paddingX * 2;
+    final chipHeight = painter.height + paddingY * 2;
 
     // Prefer sitting the chip above the box; drop it inside when there is no
     // room at the top, so labels on top-edge detections stay on screen.
@@ -121,14 +141,12 @@ class DetectionPainter extends CustomPainter {
     }
 
     final chip = Rect.fromLTWH(chipLeft, chipTop, chipWidth, chipHeight);
+    final chipRadius = Radius.circular(3 / _scale);
     canvas.drawRRect(
-      RRect.fromRectAndRadius(chip, const Radius.circular(3)),
+      RRect.fromRectAndRadius(chip, chipRadius),
       Paint()..color = color,
     );
-    painter.paint(
-      canvas,
-      Offset(chip.left + _labelPaddingX, chip.top + _labelPaddingY),
-    );
+    painter.paint(canvas, Offset(chip.left + paddingX, chip.top + paddingY));
   }
 
   @override
@@ -136,7 +154,8 @@ class DetectionPainter extends CustomPainter {
     return old.detections != detections ||
         old.imageWidth != imageWidth ||
         old.imageHeight != imageHeight ||
-        old.minConfidence != minConfidence;
+        old.minConfidence != minConfidence ||
+        old.viewScale != viewScale;
   }
 }
 
@@ -150,11 +169,18 @@ class DetectionOverlay extends StatelessWidget {
 
   final double minConfidence;
 
+  /// Current zoom factor of an ancestor `InteractiveViewer`, or 1 outside one.
+  ///
+  /// See [DetectionPainter.viewScale]: keeps box strokes and label text a
+  /// constant screen size while a pinch-zoom magnifies the photo underneath.
+  final double viewScale;
+
   const DetectionOverlay({
     super.key,
     required this.imageBytes,
     this.result,
     this.minConfidence = 0,
+    this.viewScale = 1,
   });
 
   @override
@@ -174,6 +200,7 @@ class DetectionOverlay extends StatelessWidget {
                   imageWidth: result.imageWidth,
                   imageHeight: result.imageHeight,
                   minConfidence: minConfidence,
+                  viewScale: viewScale,
                 ),
               ),
           ],

@@ -101,9 +101,17 @@ class _PhotoViewerScreenState extends State<PhotoViewerScreen>
                   maxScale: 6,
                   child: Hero(
                     tag: widget.heroTag,
-                    child: DetectionOverlay(
-                      imageBytes: widget.imageBytes,
-                      result: result,
+                    // Rebuilds just the overlay (not the whole screen) as the
+                    // pinch gesture updates the transform, so box strokes and
+                    // label text can be counter-scaled to stay a constant
+                    // screen size -- see DetectionPainter.viewScale.
+                    child: ValueListenableBuilder<Matrix4>(
+                      valueListenable: _controller,
+                      builder: (context, matrix, _) => DetectionOverlay(
+                        imageBytes: widget.imageBytes,
+                        result: result,
+                        viewScale: matrix.getMaxScaleOnAxis(),
+                      ),
                     ),
                   ),
                 ),
