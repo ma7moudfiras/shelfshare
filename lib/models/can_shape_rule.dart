@@ -6,71 +6,81 @@ import 'detection_result.dart';
 ///
 /// ## Why this exists
 ///
-/// The two SKUs are the same product in two can formats. A standard 330 ml can
-/// is roughly 66 mm wide by 115 mm tall (height / width ~ 1.74); a sleek 330 ml
-/// can is roughly 53 mm by 145 mm (~ 2.7). Everything else about them -- the
-/// logo, the colour, the finish -- is identical, so *proportion is the only
-/// reliable signal*.
+/// A brand that sells both a standard and a slim 330 ml can is the same
+/// product in two physical formats. A standard can is roughly 66 mm wide by
+/// 115 mm tall (height / width ~ 1.74); a slim can is roughly 53 mm by
+/// 145 mm (~ 2.7). Everything else about them -- the logo, the colour, the
+/// finish -- is identical, so *proportion is the only reliable signal*.
 ///
-/// That is exactly the signal the visual-search classifier cannot see. CLIP
-/// resizes every crop to a square 224x224 before embedding it, which throws the
-/// aspect ratio away: a tall can and a wide can arrive at the encoder looking
-/// the same. Measured on a shelf photo holding both formats side by side, the
-/// classifier put all ten cans in one class while the boxes separated cleanly:
+/// That is exactly the signal the brand classifier cannot see. CLIP-style
+/// encoders resize every crop to a square before embedding it, which throws
+/// the aspect ratio away: a tall can and a wide can arrive at the encoder
+/// looking the same. Measured on a shelf photo holding both formats side by
+/// side, the classifier put all ten cans in one class while the boxes
+/// separated cleanly:
 ///
 /// | format   | measured h/w  |
 /// |----------|---------------|
 /// | standard | 1.72 - 1.82   |
-/// | sleek    | 2.30 - 2.58   |
+/// | slim     | 2.30 - 2.58   |
 ///
 /// The detector's own boxes are tight (0.96+ confidence) and land on the
-/// physical ratios, so the split is read straight off them.
+/// physical ratios, so the format is read straight off them.
 ///
-/// ## What it does not do
+/// ## The classifier stays brand-only, on purpose
 ///
-/// This rule only ever swaps one 330 ml label for the other. Any class it does
-/// not recognise is passed through untouched -- deciding *which product* a can
-/// is remains the classifier's job, and shape says nothing about brand.
+/// This rule takes the classifier's plain brand label (`coca-cola`, not a
+/// brand+format class it would need retraining to learn) and rewrites it
+/// into a format-specific one *only* for brands declared in
+/// [dualFormatBrands]. A brand that is not declared is passed through
+/// untouched: format only means something where two formats actually exist,
+/// and inventing a suffix elsewhere would be a lie. Onboarding a new
+/// dual-format brand this way costs one map entry, not a classifier retrain.
 class CanShapeRule {
-  /// Height / width at or above which a box is a sleek can.
+  /// Height / width at or above which a box is a slim can.
   ///
   /// Sits in the empty band between the two measured clusters (1.82 .. 2.30),
   /// so neither cluster is near it. Raise it if standard cans start reading as
-  /// sleek; lower it for the reverse.
+  /// slim; lower it for the reverse.
   final double slimAspectRatio;
 
-  /// Label written onto boxes taller than [slimAspectRatio].
-  final String slimClass;
-
-  /// Label written onto boxes shorter than [slimAspectRatio].
-  final String fatClass;
+  /// Brands sold in both a standard and a slim 330 ml can, mapped to the
+  /// (slim, standard) label pair to write onto the detection.
+  ///
+  /// Pilot entry: `coca-cola`. Extend this map to onboard another dual-format
+  /// brand -- no retraining required, since the classifier keeps predicting
+  /// the plain brand name either way.
+  final Map<String, (String slim, String standard)> dualFormatBrands;
 
   const CanShapeRule({
     this.slimAspectRatio = 2.05,
-    this.slimClass = 'coca-330-slim',
-    this.fatClass = 'coca-330-fat',
+    this.dualFormatBrands = const {
+      'coca-cola': ('coca-cola-slim', 'coca-cola-standard'),
+    },
   });
 
-  /// Whether [className] is one of the two labels this rule arbitrates between.
-  bool governs(String className) =>
-      className == slimClass || className == fatClass;
+  /// Whether [className] is a brand this rule arbitrates the format of.
+  bool governs(String className) => dualFormatBrands.containsKey(className);
 
   /// The label [detection]'s proportions imply, or null when the rule declines
   /// to judge -- an unrelated class, or a degenerate box.
   String? shapeClassOf(Detection detection) {
-    if (!governs(detection.className)) return null;
+    final pair = dualFormatBrands[detection.className];
+    if (pair == null) return null;
 
     final box = detection.box;
     if (box.width <= 0 || box.height <= 0) return null;
 
-    return box.height / box.width >= slimAspectRatio ? slimClass : fatClass;
+    final (slim, standard) = pair;
+    return box.height / box.width >= slimAspectRatio ? slim : standard;
   }
 
-  /// Returns [result] with every 330 ml can re-labelled from its box shape.
+  /// Returns [result] with every dual-format brand re-labelled from its box
+  /// shape.
   ///
   /// Cans touching the frame edge keep whatever the classifier said. Their box
   /// is cut off by the crop rather than by the can, so its height understates
-  /// the real one and a sleek can would read as standard.
+  /// the real one and a slim can would read as standard.
   DetectionResult applyTo(DetectionResult result) {
     if (result.isEmpty) return result;
 

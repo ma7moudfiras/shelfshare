@@ -34,7 +34,8 @@ class ModelCatalogService {
   static Uri _defaultEndpoint() {
     if (AppConfig.usesProxy) {
       // Sits alongside /api/detect, so derive it from the detection endpoint
-      // rather than assuming an origin.
+      // rather than assuming an origin. The proxy bundles both the
+      // detector's versions and the classifier's classes into one response.
       final detect = AppConfig.detectionEndpoint;
       return detect.replace(
         path: detect.path.replaceFirst(RegExp(r'detect/?$'), 'models'),
@@ -46,6 +47,14 @@ class ModelCatalogService {
       'https://api.roboflow.com/${AppConfig.workspace}/${AppConfig.detectProject}',
     );
   }
+
+  /// The classifier's own project, queried separately in direct mode.
+  ///
+  /// The detector is class-agnostic (its only class is `product`), so the
+  /// real per-brand classes the "Products" filter needs live here instead.
+  static Uri _classifyEndpoint() => Uri.parse(
+    'https://api.roboflow.com/${AppConfig.workspace}/${AppConfig.classifyProject}',
+  );
 
   /// Returns the catalog, or an empty one when it cannot be retrieved.
   Future<ModelCatalog> fetchCatalog() async {
@@ -63,18 +72,51 @@ class ModelCatalogService {
       if (decoded is! Map) return const ModelCatalog.empty();
       final json = decoded.cast<String, dynamic>();
 
-      // The proxy returns a normalised shape; a direct Roboflow call returns
-      // the raw project document, which needs converting here.
+      // The proxy returns a normalised shape, classes already included.
       if (json.containsKey('models')) return ModelCatalog.fromJson(json);
-      return _fromRoboflowProject(json);
+
+      // A direct Roboflow call returns the raw detector project document,
+      // which has models but not the real classes -- fetch those from the
+      // classifier project separately.
+      final models = _modelsFromRoboflowProject(json);
+      final classes = await _fetchDirectClasses();
+      return ModelCatalog(models: models, classes: classes);
     } catch (_) {
       // Catalog is a convenience -- never let it break the capture flow.
       return const ModelCatalog.empty();
     }
   }
 
-  /// Converts the raw Roboflow project document used by the direct path.
-  ModelCatalog _fromRoboflowProject(Map<String, dynamic> json) {
+  /// Fetches the classifier project's classes for the direct-mode path.
+  ///
+  /// Failure here is non-fatal and separate from the model-listing failure
+  /// above: losing the class list degrades the "Products" filter, it should
+  /// never take the model picker down with it.
+  Future<List<String>> _fetchDirectClasses() async {
+    try {
+      final uri = _classifyEndpoint().replace(
+        queryParameters: {'api_key': AppConfig.roboflowApiKey},
+      );
+      final response = await _client.get(uri).timeout(timeout);
+      if (response.statusCode != 200) return const [];
+
+      final decoded = jsonDecode(response.body);
+      if (decoded is! Map) return const [];
+      final project = decoded['project'];
+      if (project is! Map || project['classes'] is! Map) return const [];
+
+      final classes = (project['classes'] as Map).keys
+          .map((k) => k.toString())
+          .toList();
+      classes.sort();
+      return classes;
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  /// Converts the raw Roboflow detector project document into model options.
+  List<ModelOption> _modelsFromRoboflowProject(Map<String, dynamic> json) {
     final models = <ModelOption>[];
 
     final versions = json['versions'];
@@ -113,15 +155,7 @@ class ModelCatalogService {
     }
 
     models.sort((a, b) => b.version.compareTo(a.version));
-
-    final classes = <String>[];
-    final project = json['project'];
-    if (project is Map && project['classes'] is Map) {
-      classes.addAll((project['classes'] as Map).keys.map((k) => k.toString()));
-      classes.sort();
-    }
-
-    return ModelCatalog(models: models, classes: classes);
+    return models;
   }
 
   void dispose() {

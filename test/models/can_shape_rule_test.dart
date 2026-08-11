@@ -36,38 +36,42 @@ void main() {
   const rule = CanShapeRule();
 
   group('shapeClassOf', () {
-    test('a tall box is a sleek can', () {
+    test('a tall box is a slim can', () {
       expect(
-        rule.shapeClassOf(can('coca-330-fat', width: 98, height: 253)),
-        'coca-330-slim',
+        rule.shapeClassOf(can('coca-cola', width: 98, height: 253)),
+        'coca-cola-slim',
       );
     });
 
     test('a squat box is a standard can', () {
       expect(
-        rule.shapeClassOf(can('coca-330-slim', width: 137, height: 235)),
-        'coca-330-fat',
+        rule.shapeClassOf(can('coca-cola', width: 137, height: 235)),
+        'coca-cola-standard',
       );
     });
 
-    test('classes outside the 330 ml pair are none of its business', () {
+    test('brands outside dualFormatBrands are none of its business', () {
       expect(rule.shapeClassOf(can('pepsi', width: 98, height: 253)), isNull);
-      expect(rule.shapeClassOf(can('unmatched', width: 98, height: 253)),
-          isNull);
+      expect(
+        rule.shapeClassOf(can('unmatched', width: 98, height: 253)),
+        isNull,
+      );
     });
 
     test('a degenerate box is not judged rather than dividing by zero', () {
-      expect(rule.shapeClassOf(can('coca-330-fat', width: 0, height: 253)),
-          isNull);
+      expect(
+        rule.shapeClassOf(can('coca-cola', width: 0, height: 253)),
+        isNull,
+      );
     });
   });
 
   // The image that exposed the problem: one fridge shot holding both formats,
-  // sleek on the lower shelf and standard on the upper. The visual-search
-  // classifier called all ten `coca-330-fat`; the boxes disagree unanimously.
+  // slim on the lower shelf and standard on the upper. The brand classifier
+  // called all ten plain `coca-cola`; the boxes disagree unanimously.
   group('the shelf photo the classifier got wrong', () {
     // Straight from the workflow response: width x height, in image pixels.
-    const sleekBoxes = [
+    const slimBoxes = [
       [112.0, 257.0, 316.0, 536.5],
       [109.0, 254.0, 450.5, 534.0],
       [98.0, 253.0, 580.0, 531.5],
@@ -84,7 +88,7 @@ void main() {
 
     Detection fromRow(List<double> row) => can(
       // What the classifier said about every single one of them.
-      'coca-330-fat',
+      'coca-cola',
       width: row[0],
       height: row[1],
       centerX: row[2],
@@ -93,32 +97,33 @@ void main() {
 
     test('all ten are labelled by format', () {
       final refined = rule.applyTo(
-        resultOf([
-          ...sleekBoxes.map(fromRow),
-          ...standardBoxes.map(fromRow),
-        ]),
+        resultOf([...slimBoxes.map(fromRow), ...standardBoxes.map(fromRow)]),
       );
 
       final labels = refined.detections.map((d) => d.className).toList();
-      expect(labels.sublist(0, 5), everyElement('coca-330-slim'));
-      expect(labels.sublist(5), everyElement('coca-330-fat'));
+      expect(labels.sublist(0, 5), everyElement('coca-cola-slim'));
+      expect(labels.sublist(5), everyElement('coca-cola-standard'));
     });
 
     test('the two clusters sit clear of the threshold', () {
       double ratio(List<double> row) => row[1] / row[0];
 
-      expect(sleekBoxes.map(ratio).reduce((a, b) => a < b ? a : b),
-          greaterThan(2.2));
-      expect(standardBoxes.map(ratio).reduce((a, b) => a > b ? a : b),
-          lessThan(1.9));
+      expect(
+        slimBoxes.map(ratio).reduce((a, b) => a < b ? a : b),
+        greaterThan(2.2),
+      );
+      expect(
+        standardBoxes.map(ratio).reduce((a, b) => a > b ? a : b),
+        lessThan(1.9),
+      );
     });
 
     test('boxes and confidences survive re-labelling untouched', () {
-      final original = fromRow(sleekBoxes.first);
+      final original = fromRow(slimBoxes.first);
       final refined = rule.applyTo(resultOf([original]));
       final detection = refined.detections.single;
 
-      expect(detection.className, 'coca-330-slim');
+      expect(detection.className, 'coca-cola-slim');
       expect(detection.confidence, original.confidence);
       expect(detection.box.width, original.box.width);
       expect(detection.box.height, original.box.height);
@@ -130,8 +135,8 @@ void main() {
     test('Share of Shelf reflects the corrected labels', () {
       final refined = rule.applyTo(
         resultOf([
-          can('coca-330-fat', width: 100, height: 250),
-          can('coca-330-fat', width: 130, height: 230),
+          can('coca-cola', width: 100, height: 250),
+          can('coca-cola', width: 130, height: 230),
         ]),
       );
 
@@ -155,23 +160,28 @@ void main() {
     test('a can clipped by the frame keeps the label it came with', () {
       final refined = rule.applyTo(
         resultOf([
-          // Tall enough to read as sleek, but its top is cut off at y = 0.
-          can('coca-330-fat', width: 100, height: 250, centerX: 700,
-              centerY: 124),
+          // Tall enough to read as slim, but its top is cut off at y = 0.
+          can(
+            'coca-cola',
+            width: 100,
+            height: 250,
+            centerX: 700,
+            centerY: 124,
+          ),
         ]),
       );
 
-      expect(refined.detections.single.className, 'coca-330-fat');
+      expect(refined.detections.single.className, 'coca-cola');
     });
 
     test('unknown image dimensions do not disable the rule', () {
       final refined = rule.applyTo(
         resultOf([
-          can('coca-330-fat', width: 100, height: 250),
+          can('coca-cola', width: 100, height: 250),
         ], imageWidth: 0, imageHeight: 0),
       );
 
-      expect(refined.detections.single.className, 'coca-330-slim');
+      expect(refined.detections.single.className, 'coca-cola-slim');
     });
   });
 
@@ -180,32 +190,60 @@ void main() {
       const strict = CanShapeRule(slimAspectRatio: 3);
 
       expect(
-        strict.shapeClassOf(can('coca-330-fat', width: 98, height: 253)),
-        'coca-330-fat',
+        strict.shapeClassOf(can('coca-cola', width: 98, height: 253)),
+        'coca-cola-standard',
         reason: 'h/w of 2.58 is below a threshold of 3',
       );
     });
 
     test('is inclusive at the boundary', () {
       expect(
-        rule.shapeClassOf(can('coca-330-fat', width: 100, height: 205)),
-        'coca-330-slim',
+        rule.shapeClassOf(can('coca-cola', width: 100, height: 205)),
+        'coca-cola-slim',
       );
       expect(
-        rule.shapeClassOf(can('coca-330-slim', width: 100, height: 204)),
-        'coca-330-fat',
+        rule.shapeClassOf(can('coca-cola', width: 100, height: 204)),
+        'coca-cola-standard',
+      );
+    });
+  });
+
+  group('dualFormatBrands', () {
+    test('is configurable per brand', () {
+      const multiband = CanShapeRule(
+        dualFormatBrands: {
+          'xl_energy': ('xl_energy-slim', 'xl_energy-standard'),
+        },
+      );
+
+      expect(
+        multiband.shapeClassOf(can('xl_energy', width: 98, height: 253)),
+        'xl_energy-slim',
+      );
+      // coca-cola is no longer declared on this instance, so it passes through.
+      expect(
+        multiband.shapeClassOf(can('coca-cola', width: 98, height: 253)),
+        isNull,
       );
     });
 
-    test('class names are configurable', () {
-      const renamed = CanShapeRule(slimClass: 'sleek', fatClass: 'standard');
-
-      expect(
-        renamed.shapeClassOf(can('standard', width: 98, height: 253)),
-        'sleek',
+    test('supports more than one brand at once', () {
+      const both = CanShapeRule(
+        dualFormatBrands: {
+          'coca-cola': ('coca-cola-slim', 'coca-cola-standard'),
+          'xl_energy': ('xl_energy-slim', 'xl_energy-standard'),
+        },
       );
-      expect(renamed.shapeClassOf(can('coca-330-fat', width: 98, height: 253)),
-          isNull);
+
+      final refined = both.applyTo(
+        resultOf([
+          can('coca-cola', width: 98, height: 253, centerX: 100),
+          can('xl_energy', width: 98, height: 253, centerX: 300),
+        ]),
+      );
+
+      final labels = refined.detections.map((d) => d.className).toList();
+      expect(labels, ['coca-cola-slim', 'xl_energy-slim']);
     });
   });
 }
