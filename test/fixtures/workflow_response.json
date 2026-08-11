@@ -2,17 +2,55 @@
   "outputs": [
     {
       "predictions": {
-        "image": { "width": 720, "height": 540 },
+        "image": { "width": 768, "height": 614 },
         "predictions": [
           {
-            "width": 48.0,
-            "height": 140.0,
-            "x": 624.0,
-            "y": 70.0,
-            "confidence": 0.44803252816200256,
-            "class_id": 0,
+            "width": 77.0,
+            "height": 187.0,
+            "x": 212.5,
+            "y": 459.5,
+            "confidence": 0.9993,
+            "class_id": 4,
+            "class": "xl_energy",
+            "detection_id": "ba73b96a-f319-44f6-bb2e-6de20d8b16fc",
+            "parent_id": "image"
+          },
+          {
+            "width": 40.0,
+            "height": 97.0,
+            "x": 217.0,
+            "y": 123.5,
+            "confidence": 0.9993,
+            "class_id": 5,
             "class": "coca-cola",
-            "detection_id": "46487882-a7c3-4cca-ac37-b922465a2b45",
+            "detection_id": "dff503c6-65d9-4b39-9fa1-3f0ffd398a89",
+            "parent_id": "image"
+          }
+        ]
+      },
+      "raw_detections": {
+        "image": { "width": 768, "height": 614 },
+        "predictions": [
+          {
+            "width": 77.0,
+            "height": 187.0,
+            "x": 212.5,
+            "y": 459.5,
+            "confidence": 0.9810117483139038,
+            "class_id": 0,
+            "class": "product",
+            "detection_id": "e186aaf6-5711-46c6-839c-5d160b551f2d",
+            "parent_id": "image"
+          },
+          {
+            "width": 40.0,
+            "height": 97.0,
+            "x": 217.0,
+            "y": 123.5,
+            "confidence": 0.9616368412971497,
+            "class_id": 0,
+            "class": "product",
+            "detection_id": "4a2b4a80-ee86-4ed2-831b-6e70b5df786a",
             "parent_id": "image"
           }
         ]

@@ -12,23 +12,22 @@ import 'detection_exception.dart';
 import 'detection_service.dart';
 import 'workflow_response_parser.dart';
 
-/// Runtime parameters accepted by the `aystro-project` workflow.
+/// Runtime parameters accepted by the `aystro-detect-classify-brand` workflow.
 ///
-/// Names and defaults mirror the workflow's declared `WorkflowParameter`
-/// inputs exactly, as returned by the Roboflow API:
+/// Names mirror the workflow's declared `WorkflowParameter` inputs exactly,
+/// as returned by the Roboflow API:
 ///
-/// | name                 | default              |
-/// |----------------------|----------------------|
-/// | `confidence`         | `0.4`                |
-/// | `iou_threshold`      | `0.3`                |
-/// | `class_agnostic_nms` | `false`              |
-/// | `max_detections`     | `1000`               |
-/// | `model_id`           | `aystro-project/1`   |
+/// | name                | default                                |
+/// |---------------------|-----------------------------------------|
+/// | `detect_confidence` | `0.4`                                    |
+/// | `detect_model_id`   | `ma7mouds-workspace/aystro-project-v2/2` |
+/// | `brand_model_id`    | `ma7mouds-workspace/aystro-brand-classifier/1` |
 ///
-/// The workflow's own `model_id` default is version 1, trained on 27 images
-/// before most classes existed. [AppConfig.defaultModelId] points at the newest
-/// trained version instead, which is what makes classes beyond `coca-cola`
-/// appear.
+/// This is a 3-stage pipeline (detect -> crop -> classify brand), so there is
+/// no single `model_id` the way a plain single-model workflow has one. Only
+/// the detector is overridable per call; the brand classifier stays pinned to
+/// the workflow's own default. [AppConfig.defaultModelId] points at the
+/// newest trained detector version.
 ///
 /// Sending a name the workflow does not declare is rejected by the API, so this
 /// class is the single place those names are written down.
@@ -37,23 +36,11 @@ class RoboflowParameters {
   /// Minimum confidence a detection must reach to be returned.
   final double confidence;
 
-  /// IoU threshold used by non-max suppression.
-  final double iouThreshold;
-
-  /// Whether NMS ignores class when suppressing overlapping boxes.
-  final bool classAgnosticNms;
-
-  /// Hard cap on returned detections.
-  final int maxDetections;
-
-  /// Model version to run, e.g. `aystro-project/11`.
+  /// Detector model version to run, e.g. `aystro-project-v2/2`.
   final String modelId;
 
   const RoboflowParameters({
     this.confidence = 0.4,
-    this.iouThreshold = 0.3,
-    this.classAgnosticNms = false,
-    this.maxDetections = 1000,
     this.modelId = AppConfig.defaultModelId,
   });
 
@@ -66,31 +53,20 @@ class RoboflowParameters {
 
   /// Serialises to the exact parameter names the workflow declares.
   Map<String, dynamic> toJson() => {
-    'confidence': confidence,
-    'iou_threshold': iouThreshold,
-    'class_agnostic_nms': classAgnosticNms,
-    'max_detections': maxDetections,
-    'model_id': modelId,
+    'detect_confidence': confidence,
+    'detect_model_id': modelId,
   };
 
-  RoboflowParameters copyWith({
-    double? confidence,
-    double? iouThreshold,
-    bool? classAgnosticNms,
-    int? maxDetections,
-    String? modelId,
-  }) {
+  RoboflowParameters copyWith({double? confidence, String? modelId}) {
     return RoboflowParameters(
       confidence: confidence ?? this.confidence,
-      iouThreshold: iouThreshold ?? this.iouThreshold,
-      classAgnosticNms: classAgnosticNms ?? this.classAgnosticNms,
-      maxDetections: maxDetections ?? this.maxDetections,
       modelId: modelId ?? this.modelId,
     );
   }
 }
 
-/// Runs the `aystro-project` Roboflow Workflow over a captured photo.
+/// Runs the `aystro-detect-classify-brand` Roboflow Workflow over a captured
+/// photo.
 ///
 /// There is no official Dart SDK, so this posts to the serverless REST endpoint
 /// directly and mirrors what the JS/Python SDKs do: a JSON body carrying
@@ -111,10 +87,11 @@ class RoboflowParameters {
 /// web builds use, since anything shipped to a browser is publicly readable.
 /// The response shape is identical either way, so parsing is unaffected.
 ///
-/// Note: the published workflow includes a `roboflow_dataset_upload` step, so
-/// every successful call also uploads the photo into the `aystro-project`
-/// dataset for active learning. That is the workflow's behaviour, not this
-/// client's -- but it does mean inference is not side-effect free.
+/// The workflow itself is a pipeline: a class-agnostic detector finds every
+/// product, each crop is classified for brand, then the classification is
+/// written back onto the detection's `class` field. It has no dataset-upload
+/// step, so unlike the earlier single-model workflow, a call here has no
+/// side effect on the training data.
 class RoboflowService implements DetectionService {
   final http.Client _client;
   final bool _ownsClient;
