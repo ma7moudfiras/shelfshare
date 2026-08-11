@@ -105,6 +105,13 @@ class DetectionResult {
     );
   }
 
+  /// Returns a copy carrying [detections] in place of the current ones, keeping
+  /// the image dimensions and call metadata.
+  ///
+  /// Share of Shelf is recomputed from the new set rather than carried over.
+  DetectionResult withDetections(List<Detection> detections) =>
+      _copyWithDetections(detections);
+
   DetectionResult _copyWithDetections(List<Detection> filtered) {
     return DetectionResult(
       detections: filtered,

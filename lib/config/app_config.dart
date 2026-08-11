@@ -68,27 +68,43 @@ class AppConfig {
       _read('ROBOFLOW_WORKSPACE') ?? 'ma7mouds-workspace';
 
   /// Workflow slug (not the workflow document id).
+  ///
+  /// `aystro-detect-classify-brand` is a 3-stage pipeline: a class-agnostic
+  /// detector finds every product, each crop goes through a brand classifier,
+  /// then the classification is written back onto the detection. It declares
+  /// `detect_confidence`/`detect_model_id`/`brand_model_id` as its
+  /// parameters -- a different shape from a plain single-model workflow, see
+  /// [RoboflowParameters] in `roboflow_service.dart`.
   static String get workflowId =>
-      _read('ROBOFLOW_WORKFLOW_ID') ?? 'aystro-project';
+      _read('ROBOFLOW_WORKFLOW_ID') ?? 'aystro-detect-classify-brand';
 
   /// Inference host base URL.
   static String get baseUrl =>
       _read('ROBOFLOW_BASE_URL') ?? 'https://serverless.roboflow.com';
 
-  /// Model version run by the workflow, as `<project>/<version>`.
+  /// Detector model version run by the workflow, as `<project>/<version>`.
   ///
-  /// The workflow itself defaults to `aystro-project/1`, which was trained on
-  /// 27 images before most classes existed and therefore only reliably finds
-  /// `coca-cola`. Pointing at the newest trained version is what makes the
-  /// other products show up.
+  /// Only overrides `detect_model_id`. The brand classifier has no per-call
+  /// override -- it stays pinned to the workflow's own `brand_model_id`
+  /// default, since there is no single `model_id` once a pipeline runs two
+  /// models.
   ///
-  /// Set `ROBOFLOW_MODEL_ID` in `.env` to pin a different version. On a web
-  /// deployment the server-side `ROBOFLOW_MODEL_ID` takes precedence, so the
-  /// model can be switched from the Vercel dashboard without rebuilding.
+  /// Set `ROBOFLOW_MODEL_ID` in `.env` to pin a different detector version.
+  /// On a web deployment the server-side `ROBOFLOW_MODEL_ID` takes
+  /// precedence, so the model can be switched from the Vercel dashboard
+  /// without rebuilding.
   static String get modelId => _read('ROBOFLOW_MODEL_ID') ?? defaultModelId;
 
-  /// Newest trained version of the `aystro-project` model.
-  static const defaultModelId = 'aystro-project/11';
+  /// Newest trained version of the `aystro-project-v2` detector.
+  static const defaultModelId = 'aystro-project-v2/2';
+
+  /// Project the model picker lists detector versions from.
+  ///
+  /// Deliberately separate from [workflowId]: a workflow document is not a
+  /// project you can query `/versions` on, so the picker's catalog lookup
+  /// needs the detector's actual project slug.
+  static String get detectProject =>
+      _read('ROBOFLOW_DETECT_PROJECT') ?? 'aystro-project-v2';
 
   /// Explicit proxy URL, when set. Overrides the web default and lets a mobile
   /// build be pointed at the same proxy.

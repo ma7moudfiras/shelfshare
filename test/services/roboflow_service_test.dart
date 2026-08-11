@@ -29,7 +29,7 @@ void main() {
       envString: '''
 ROBOFLOW_API_KEY=test_key
 ROBOFLOW_WORKSPACE=ma7mouds-workspace
-ROBOFLOW_WORKFLOW_ID=aystro-project
+ROBOFLOW_WORKFLOW_ID=aystro-detect-classify-brand
 ROBOFLOW_BASE_URL=https://serverless.roboflow.com
 ''',
     );
@@ -64,24 +64,31 @@ ROBOFLOW_BASE_URL=https://serverless.roboflow.com
       final result = await service.detectProducts(sampleBytes);
 
       expect(result.isNotEmpty, isTrue);
-      expect(result.count, 1);
+      expect(result.count, 2);
 
-      // The output key the detections were discovered under -- the workflow
-      // declares exactly one JsonField output named `predictions`.
+      // The output key the detections were discovered under. The pipeline
+      // declares two JsonField outputs -- `predictions` (brand-refined) and
+      // `raw_detections` (the class-agnostic detector's own output) -- and
+      // `predictions` is declared first, so it must win.
       expect(result.sourceOutputKey, 'predictions');
 
       // Image dimensions travel with the predictions and drive the overlay.
-      expect(result.imageWidth, 720);
-      expect(result.imageHeight, 540);
+      expect(result.imageWidth, 768);
+      expect(result.imageHeight, 614);
 
-      final detection = result.detections.single;
-      expect(detection.className, 'coca-cola');
-      expect(detection.classId, 0);
-      expect(detection.confidence, closeTo(0.448, 0.001));
-      expect(detection.box.centerX, 624);
-      expect(detection.box.centerY, 70);
-      expect(detection.box.width, 48);
-      expect(detection.box.height, 140);
+      final xlEnergy = result.detections.first;
+      expect(xlEnergy.className, 'xl_energy');
+      expect(xlEnergy.classId, 4);
+      expect(xlEnergy.confidence, closeTo(0.9993, 0.0001));
+      expect(xlEnergy.box.centerX, 212.5);
+      expect(xlEnergy.box.centerY, 459.5);
+      expect(xlEnergy.box.width, 77);
+      expect(xlEnergy.box.height, 187);
+
+      final cocaCola = result.detections.last;
+      expect(cocaCola.className, 'coca-cola');
+      expect(cocaCola.classId, 5);
+      expect(cocaCola.confidence, closeTo(0.9993, 0.0001));
 
       // This workflow has no visualisation block, so no image comes back.
       expect(result.hasAnnotatedImage, isFalse);
@@ -98,7 +105,7 @@ ROBOFLOW_BASE_URL=https://serverless.roboflow.com
       expect(request.method, 'POST');
       expect(
         request.url.toString(),
-        'https://serverless.roboflow.com/ma7mouds-workspace/workflows/aystro-project',
+        'https://serverless.roboflow.com/ma7mouds-workspace/workflows/aystro-detect-classify-brand',
       );
       expect(request.headers['Content-Type'], contains('application/json'));
 
@@ -118,18 +125,17 @@ ROBOFLOW_BASE_URL=https://serverless.roboflow.com
         isFalse,
         reason: 'a top-level parameters block is silently ignored by Roboflow',
       );
+      // Only detect_confidence/detect_model_id are sent -- there is no
+      // top-level model_id once the workflow runs two models, and
+      // brand_model_id has no per-call override.
       expect(
         (body['inputs'] as Map).keys,
-        containsAll([
-          'image',
-          'confidence',
-          'iou_threshold',
-          'class_agnostic_nms',
-          'max_detections',
-          'model_id',
-        ]),
+        containsAll(['image', 'detect_confidence', 'detect_model_id']),
       );
-      expect((body['inputs'] as Map)['model_id'], 'aystro-project/11');
+      expect(
+        (body['inputs'] as Map)['detect_model_id'],
+        'aystro-project-v2/2',
+      );
     });
 
     test('computes Share of Shelf from the parsed detections', () async {
@@ -138,17 +144,19 @@ ROBOFLOW_BASE_URL=https://serverless.roboflow.com
       final result = await service.detectProducts(sampleBytes);
       final share = result.shareOfShelf;
 
-      // A single class necessarily holds the whole shelf.
-      expect(share.classCount, 1);
-      expect(share.shares.single.className, 'coca-cola');
-      expect(share.shares.single.percentage, closeTo(100, 0.001));
-      expect(share.summaryLine, 'coca-cola: 100%');
+      // xl_energy: 77x187 = 14399 sq px. coca-cola: 40x97 = 3880 sq px.
+      // Total 18279; xl_energy takes the larger share.
+      expect(share.classCount, 2);
+      expect(share.shares.first.className, 'xl_energy');
+      expect(share.shares.first.percentage, closeTo(78.77, 0.01));
+      expect(share.shares.last.className, 'coca-cola');
+      expect(share.shares.last.percentage, closeTo(21.23, 0.01));
     });
   });
 
   group('model selection', () {
     test(
-      'defaults to the newest trained model, not the workflow default',
+      'defaults to the newest trained detector, not the workflow default',
       () async {
         final (service, captured) = serviceReplaying(
           fixture.readAsStringSync(),
@@ -156,11 +164,11 @@ ROBOFLOW_BASE_URL=https://serverless.roboflow.com
 
         await service.detectProducts(sampleBytes);
 
-        // The workflow itself declares aystro-project/1, trained on 27 images
-        // before most classes existed. Shipping that default is what made only
-        // coca-cola appear.
         final body = jsonDecode(captured.single.body) as Map<String, dynamic>;
-        expect((body['inputs'] as Map)['model_id'], 'aystro-project/11');
+        expect(
+          (body['inputs'] as Map)['detect_model_id'],
+          'aystro-project-v2/2',
+        );
       },
     );
 
@@ -168,7 +176,7 @@ ROBOFLOW_BASE_URL=https://serverless.roboflow.com
       dotenv.loadFromString(
         envString: '''
 ROBOFLOW_API_KEY=test_key
-ROBOFLOW_MODEL_ID=aystro-project/9
+ROBOFLOW_MODEL_ID=aystro-project-v2/1
 ''',
       );
 
@@ -176,7 +184,10 @@ ROBOFLOW_MODEL_ID=aystro-project/9
       await service.detectProducts(sampleBytes);
 
       final body = jsonDecode(captured.single.body) as Map<String, dynamic>;
-      expect((body['inputs'] as Map)['model_id'], 'aystro-project/9');
+      expect(
+        (body['inputs'] as Map)['detect_model_id'],
+        'aystro-project-v2/1',
+      );
     });
 
     test('an explicit parameters object still wins', () async {
@@ -188,13 +199,16 @@ ROBOFLOW_MODEL_ID=aystro-project/9
       final service = RoboflowService(
         client: client,
         useProxy: false,
-        parameters: const RoboflowParameters(modelId: 'aystro-project/7'),
+        parameters: const RoboflowParameters(modelId: 'aystro-project-v2/1'),
       );
 
       await service.detectProducts(sampleBytes);
 
       final body = jsonDecode(captured.single.body) as Map<String, dynamic>;
-      expect((body['inputs'] as Map)['model_id'], 'aystro-project/7');
+      expect(
+        (body['inputs'] as Map)['detect_model_id'],
+        'aystro-project-v2/1',
+      );
     });
   });
 
@@ -204,15 +218,15 @@ ROBOFLOW_MODEL_ID=aystro-project/9
 
       await service.detectProducts(
         sampleBytes,
-        modelId: 'aystro-project/9',
+        modelId: 'aystro-project-v2/1',
         confidence: 0.15,
       );
 
       final inputs =
           (jsonDecode(captured.single.body) as Map<String, dynamic>)['inputs']
               as Map;
-      expect(inputs['model_id'], 'aystro-project/9');
-      expect(inputs['confidence'], closeTo(0.15, 1e-9));
+      expect(inputs['detect_model_id'], 'aystro-project-v2/1');
+      expect(inputs['detect_confidence'], closeTo(0.15, 1e-9));
     });
   });
 
@@ -225,8 +239,9 @@ ROBOFLOW_MODEL_ID=aystro-project/9
 
       final result = await service.detectProducts(sampleBytes);
 
-      expect(result.count, 1);
-      expect(result.detections.single.className, 'coca-cola');
+      expect(result.count, 2);
+      expect(result.detections.first.className, 'xl_energy');
+      expect(result.detections.last.className, 'coca-cola');
     });
 
     test('parses a normalised "result" envelope identically', () async {
@@ -238,9 +253,9 @@ ROBOFLOW_MODEL_ID=aystro-project/9
 
       final result = await service.detectProducts(sampleBytes);
 
-      expect(result.count, 1);
-      expect(result.detections.single.className, 'coca-cola');
-      expect(result.imageWidth, 720);
+      expect(result.count, 2);
+      expect(result.detections.first.className, 'xl_energy');
+      expect(result.imageWidth, 768);
     });
 
     test(
@@ -281,7 +296,10 @@ ROBOFLOW_MODEL_ID=aystro-project/9
 
       // Everything else is identical, so the server can forward it as-is.
       expect((body['inputs'] as Map)['image'], isNotNull);
-      expect((body['inputs'] as Map)['model_id'], 'aystro-project/11');
+      expect(
+        (body['inputs'] as Map)['detect_model_id'],
+        'aystro-project-v2/2',
+      );
     });
 
     test('parses a proxied response identically', () async {
@@ -293,8 +311,8 @@ ROBOFLOW_MODEL_ID=aystro-project/9
 
       final result = await service.detectProducts(sampleBytes);
 
-      expect(result.count, 1);
-      expect(result.detections.single.className, 'coca-cola');
+      expect(result.count, 2);
+      expect(result.detections.first.className, 'xl_energy');
     });
 
     test('works with no API key present at all', () async {
@@ -307,7 +325,7 @@ ROBOFLOW_MODEL_ID=aystro-project/9
 
       final result = await service.detectProducts(sampleBytes);
 
-      expect(result.count, 1);
+      expect(result.count, 2);
     });
   });
 

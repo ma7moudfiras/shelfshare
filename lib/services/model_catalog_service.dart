@@ -40,8 +40,10 @@ class ModelCatalogService {
         path: detect.path.replaceFirst(RegExp(r'detect/?$'), 'models'),
       );
     }
+    // The detector's own project, not the workflow -- a workflow document id
+    // is not a project slug this endpoint can list /versions for.
     return Uri.parse(
-      'https://api.roboflow.com/${AppConfig.workspace}/${AppConfig.workflowId}',
+      'https://api.roboflow.com/${AppConfig.workspace}/${AppConfig.detectProject}',
     );
   }
 
@@ -99,7 +101,7 @@ class ModelCatalogService {
 
         models.add(
           ModelOption(
-            modelId: '${AppConfig.workflowId}/$number',
+            modelId: '${AppConfig.detectProject}/$number',
             version: number,
             name: version['name']?.toString() ?? 'Version $number',
             images: (version['images'] as num?)?.toInt(),

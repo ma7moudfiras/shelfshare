@@ -1,5 +1,5 @@
 /**
- * Lists the project's trained model versions and its class names.
+ * Lists the detector project's trained model versions and its class names.
  *
  * Exists so the app can offer a model picker without shipping a Roboflow key
  * to the browser: the key stays here, same as in api/detect.js. The response
@@ -8,12 +8,20 @@
  * GET /api/models
  *   -> { models: [{ modelId, version, name, map50, recall, images }], classes: [...] }
  *
- * Environment variables are the same ones api/detect.js uses; see that file.
+ * Deliberately reads ROBOFLOW_DETECT_PROJECT, not ROBOFLOW_WORKFLOW_ID: since
+ * aystro-detect-classify-brand runs two models (a detector and a brand
+ * classifier), the workflow id is no longer a project slug you can query
+ * Roboflow's `/{workspace}/{project}` versions endpoint with. The picker
+ * lists the detector's versions specifically -- the brand classifier has no
+ * per-call override to pick a version for.
+ *
+ * Other environment variables are the same ones api/detect.js uses; see that
+ * file.
  */
 
 const DEFAULTS = {
   workspace: 'ma7mouds-workspace',
-  project: 'aystro-project',
+  project: 'aystro-project-v2',
   apiBase: 'https://api.roboflow.com',
 };
 
@@ -99,7 +107,7 @@ export default async function handler(req, res) {
   }
 
   const workspace = process.env.ROBOFLOW_WORKSPACE || DEFAULTS.workspace;
-  const project = process.env.ROBOFLOW_WORKFLOW_ID || DEFAULTS.project;
+  const project = process.env.ROBOFLOW_DETECT_PROJECT || DEFAULTS.project;
   const apiBase = process.env.ROBOFLOW_API_BASE || DEFAULTS.apiBase;
 
   const url =

@@ -14,11 +14,17 @@
  *
  * Optional:
  *   ROBOFLOW_WORKSPACE    -- defaults to "ma7mouds-workspace"
- *   ROBOFLOW_WORKFLOW_ID  -- defaults to "aystro-project"
+ *   ROBOFLOW_WORKFLOW_ID  -- defaults to "aystro-detect-classify-brand", the
+ *                            3-stage detect -> crop -> classify-brand pipeline.
+ *                            It declares detect_confidence/detect_model_id/
+ *                            brand_model_id, not a single model_id.
  *   ROBOFLOW_BASE_URL     -- defaults to "https://serverless.roboflow.com"
- *   ROBOFLOW_MODEL_ID     -- overrides the model version the client asked for,
- *                            e.g. "aystro-project/11". Lets a web deployment
- *                            switch models without rebuilding the Flutter app.
+ *   ROBOFLOW_MODEL_ID     -- overrides the workflow's detect_model_id, e.g.
+ *                            "aystro-project-v2/2". Lets a web deployment
+ *                            switch detector versions without rebuilding the
+ *                            Flutter app. There is no override for
+ *                            brand_model_id -- it stays pinned to the
+ *                            workflow's own default.
  *   ALLOWED_ORIGIN        -- CORS origin; defaults to same-origin only
  *
  * NOTE: ROBOFLOW_API_KEY must be the *private* key from
@@ -29,7 +35,7 @@
 
 const DEFAULTS = {
   workspace: 'ma7mouds-workspace',
-  workflowId: 'aystro-project',
+  workflowId: 'aystro-detect-classify-brand',
   baseUrl: 'https://serverless.roboflow.com',
 };
 
@@ -154,12 +160,13 @@ export default async function handler(req, res) {
     }
   }
 
-  // Server-side model override. A web build bakes its .env in at compile time,
-  // so without this, switching model versions would mean a rebuild. Setting
-  // ROBOFLOW_MODEL_ID in the project environment repoints every request at a
-  // newly trained version immediately after a redeploy.
+  // Server-side detector override. A web build bakes its .env in at compile
+  // time, so without this, switching model versions would mean a rebuild.
+  // Setting ROBOFLOW_MODEL_ID in the project environment repoints every
+  // request's detect_model_id at a newly trained version immediately after a
+  // redeploy. There is no equivalent override for brand_model_id.
   const modelOverride = process.env.ROBOFLOW_MODEL_ID?.trim();
-  if (modelOverride) inputs.model_id = modelOverride;
+  if (modelOverride) inputs.detect_model_id = modelOverride;
 
   // Rebuild the payload rather than spreading the client's: this way an
   // `api_key` sent by a client can never override the server's.
@@ -181,13 +188,15 @@ export default async function handler(req, res) {
     // Relay the response unchanged so the client parser is mode-agnostic.
     res.status(upstream.status);
     res.setHeader('Content-Type', 'application/json');
-    // Report which model actually ran, in a header so the body stays byte-for-
-    // byte what Roboflow sent. Without this the override above is invisible:
-    // the client would stamp every capture with the version it *asked* for while a
-    // different one produced the numbers, and since every chart groups by
-    // model_id, a server-side switch would render as a shelf collapse rather
-    // than as a model change.
-    if (inputs.model_id) res.setHeader('X-Effective-Model-Id', inputs.model_id);
+    // Report which detector actually ran, in a header so the body stays byte-
+    // for-byte what Roboflow sent. Without this the override above is
+    // invisible: the client would stamp every capture with the version it
+    // *asked* for while a different one produced the numbers, and since every
+    // chart groups by model_id, a server-side switch would render as a shelf
+    // collapse rather than as a model change.
+    if (inputs.detect_model_id) {
+      res.setHeader('X-Effective-Model-Id', inputs.detect_model_id);
+    }
     return res.send(text);
   } catch (error) {
     if (error.name === 'AbortError') {

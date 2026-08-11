@@ -1,0 +1,76 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 400" width="900" height="400" font-family="Georgia, 'Times New Roman', serif">
+  <rect width="900" height="400" fill="#ffffff"/>
+
+  <text x="30" y="32" font-size="15" font-weight="bold" fill="#0b0b0b">Annotation distribution before and after geometric relabelling</text>
+  <text x="30" y="51" font-size="11" fill="#52514e">The same 4,641 boxes, partitioned by manufacturer brand (left) and by physical packaging format (right).</text>
+
+  <!-- ================= LEFT PANEL: brand ================= -->
+  <text x="30" y="86" font-size="12" font-weight="bold" fill="#0b0b0b">Before — 6 brand classes</text>
+  <text x="30" y="102" font-size="10" fill="#52514e">largest class holds 42.2% of all boxes</text>
+
+  <!-- bars: scale 1960 -> 250px ; x0 = 128 -->
+  <g font-size="10.5">
+    <text x="120" y="130" fill="#0b0b0b" text-anchor="end">coca-cola</text>
+    <rect x="128" y="120" width="250" height="14" rx="4" fill="#2a78d6"/>
+    <text x="386" y="131" fill="#0b0b0b">1,960</text>
+
+    <text x="120" y="156" fill="#0b0b0b" text-anchor="end">cappy</text>
+    <rect x="128" y="146" width="116" height="14" rx="4" fill="#2a78d6"/>
+    <text x="252" y="157" fill="#0b0b0b">909</text>
+
+    <text x="120" y="182" fill="#0b0b0b" text-anchor="end">xl_energy</text>
+    <rect x="128" y="172" width="83" height="14" rx="4" fill="#2a78d6"/>
+    <text x="219" y="183" fill="#0b0b0b">650</text>
+
+    <text x="120" y="208" fill="#0b0b0b" text-anchor="end">sprite</text>
+    <rect x="128" y="198" width="78" height="14" rx="4" fill="#2a78d6"/>
+    <text x="214" y="209" fill="#0b0b0b">611</text>
+
+    <text x="120" y="234" fill="#0b0b0b" text-anchor="end">fanta</text>
+    <rect x="128" y="224" width="48" height="14" rx="4" fill="#2a78d6"/>
+    <text x="184" y="235" fill="#0b0b0b">380</text>
+
+    <text x="120" y="260" fill="#0b0b0b" text-anchor="end">pepsi</text>
+    <rect x="128" y="250" width="17" height="14" rx="4" fill="#2a78d6"/>
+    <text x="153" y="261" fill="#0b0b0b">131</text>
+  </g>
+
+  <line x1="128" y1="278" x2="420" y2="278" stroke="#d8e1ec" stroke-width="1"/>
+  <text x="128" y="300" font-size="10" fill="#52514e">Ratio largest : smallest class = 15 : 1</text>
+  <text x="128" y="316" font-size="10" fill="#52514e">Sparse classes underlie the observed recall deficiency.</text>
+
+  <!-- divider -->
+  <line x1="452" y1="70" x2="452" y2="340" stroke="#d8e1ec" stroke-width="1"/>
+
+  <!-- ================= RIGHT PANEL: format ================= -->
+  <text x="480" y="86" font-size="12" font-weight="bold" fill="#0b0b0b">After — 4 format classes</text>
+  <text x="480" y="102" font-size="10" fill="#52514e">largest class holds 40.2%; distribution materially flatter</text>
+
+  <!-- scale 1867 -> 250px ; x0 = 590 -->
+  <g font-size="10.5">
+    <text x="582" y="130" fill="#0b0b0b" text-anchor="end" font-family="monospace">bottle-pet</text>
+    <rect x="590" y="120" width="250" height="14" rx="4" fill="#1baf7a"/>
+    <text x="848" y="131" fill="#0b0b0b">1,867</text>
+
+    <text x="582" y="156" fill="#0b0b0b" text-anchor="end" font-family="monospace">can-slim</text>
+    <rect x="590" y="146" width="223" height="14" rx="4" fill="#1baf7a"/>
+    <text x="821" y="157" fill="#0b0b0b">1,666</text>
+
+    <text x="582" y="182" fill="#0b0b0b" text-anchor="end" font-family="monospace">can-std-330</text>
+    <rect x="590" y="172" width="127" height="14" rx="4" fill="#1baf7a"/>
+    <text x="725" y="183" fill="#0b0b0b">947</text>
+
+    <text x="582" y="208" fill="#0b0b0b" text-anchor="end" font-family="monospace">unknown-package</text>
+    <rect x="590" y="198" width="22" height="14" rx="4" fill="#1baf7a"/>
+    <text x="620" y="209" fill="#0b0b0b">161</text>
+  </g>
+
+  <line x1="590" y1="278" x2="860" y2="278" stroke="#d8e1ec" stroke-width="1"/>
+  <text x="590" y="300" font-size="10" fill="#52514e">Ratio largest : smallest class = 12 : 1</text>
+  <text x="590" y="316" font-size="10" fill="#52514e">For detection, all four collapse to one `product` class.</text>
+
+  <!-- footer note -->
+  <line x1="30" y1="352" x2="860" y2="352" stroke="#d8e1ec" stroke-width="1"/>
+  <text x="30" y="372" font-size="10" fill="#52514e">Of the relabelled boxes, 194 (4.2%) were flagged truncated and 1,954 (42.1%) flagged difficult — the ambiguity that motivates human verification.</text>
+  <text x="30" y="388" font-size="9.5" fill="#52514e" font-style="italic">Source: project export, 213 images / 4,641 annotations.</text>
+</svg>

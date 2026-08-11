@@ -40,7 +40,7 @@ Then edit `.env` and set `ROBOFLOW_API_KEY` to your **private** API key from
 ```ini
 ROBOFLOW_API_KEY=your_real_key_here
 ROBOFLOW_WORKSPACE=ma7mouds-workspace
-ROBOFLOW_WORKFLOW_ID=aystro-project
+ROBOFLOW_WORKFLOW_ID=aystro-detect-classify-brand
 ROBOFLOW_BASE_URL=https://serverless.roboflow.com
 ```
 
@@ -96,7 +96,9 @@ from the body entirely — there is a test asserting exactly that.
 2. Add the environment variable **`ROBOFLOW_API_KEY`** in
    *Project → Settings → Environment Variables*. This is the only place the key
    lives for web. Optionally override `ROBOFLOW_WORKSPACE`,
-   `ROBOFLOW_WORKFLOW_ID`, `ROBOFLOW_BASE_URL`, and `ALLOWED_ORIGIN`.
+   `ROBOFLOW_WORKFLOW_ID`, `ROBOFLOW_BASE_URL`, `ROBOFLOW_MODEL_ID` (the
+   detector version), `ROBOFLOW_DETECT_PROJECT` (which project the model
+   picker lists versions from), and `ALLOWED_ORIGIN`.
 
    > **Check the variable's name character by character.** A typo here produces
    > `500 {"message": "Detection is not configured."}` — the same error as a
@@ -196,27 +198,36 @@ without touching a widget.
 
 ### The workflow
 
-The app calls the saved workflow **`aystro-project — Base Workflow`**. Its real
-definition (read from the Roboflow API, not assumed) is:
+The app calls the saved workflow **`aystro-detect-classify-brand`**, a 3-stage
+pipeline rather than a single model. Its real definition (read from the
+Roboflow API, not assumed) is:
 
 | | |
 |---|---|
 | **Workspace** | `ma7mouds-workspace` |
-| **Workflow** | `aystro-project` |
-| **Endpoint** | `POST https://serverless.roboflow.com/ma7mouds-workspace/workflows/aystro-project` |
-| **Model** | `roboflow_core/roboflow_object_detection_model@v3` |
-| **Classes** | `coca-cola`, `cappy`, `xl_energy` |
-| **Output** | one `JsonField` named `predictions` |
+| **Workflow** | `aystro-detect-classify-brand` |
+| **Endpoint** | `POST https://serverless.roboflow.com/ma7mouds-workspace/workflows/aystro-detect-classify-brand` |
+| **Pipeline** | class-agnostic detector (`detect`) → crop each box (`crop`) → brand classifier per crop (`brand`) → write the brand back onto the detection (`refine`) |
+| **Detector** | `roboflow_core/roboflow_object_detection_model@v3`, model `ma7mouds-workspace/aystro-project-v2/2` |
+| **Classifier** | `roboflow_core/roboflow_classification_model@v3`, model `ma7mouds-workspace/aystro-brand-classifier/1` |
+| **Classes** | `coca-cola`, `pepsi`, `fanta`, `sprite`, `cappy`, `xl_energy` |
+| **Outputs** | `predictions` (brand-refined detections — what the app reads) and `raw_detections` (the detector's own class-agnostic output, useful for debugging) |
 
 Declared runtime parameters, mirrored exactly in `RoboflowParameters`:
 
 | Parameter | Type | Default |
 |---|---|---|
-| `confidence` | double | `0.4` |
-| `iou_threshold` | double | `0.3` |
-| `class_agnostic_nms` | bool | `false` |
-| `max_detections` | int | `1000` |
-| `model_id` | string | `aystro-project/1` |
+| `detect_confidence` | double | `0.4` |
+| `detect_model_id` | string | `ma7mouds-workspace/aystro-project-v2/2` |
+| `brand_model_id` | string | `ma7mouds-workspace/aystro-brand-classifier/1` |
+
+There is no single `model_id` the way a plain single-model workflow has one.
+Only the detector is overridable per call (`RoboflowParameters.modelId`,
+`ROBOFLOW_MODEL_ID`) — the brand classifier has no per-call override and
+always runs the workflow's own `brand_model_id` default. A geometric rule
+(`CanShapeRule`) further refines dual-format cans client-side after the
+response comes back, since the classifier's crop-based view can't see box
+aspect ratio; see its doc comment for why.
 
 ### The request
 
@@ -225,7 +236,7 @@ directly via `package:http`, mirroring the JS/Python SDKs. Captured photos are
 local files rather than hosted URLs, so the image is sent base64-encoded:
 
 ```jsonc
-POST /ma7mouds-workspace/workflows/aystro-project
+POST /ma7mouds-workspace/workflows/aystro-detect-classify-brand
 Content-Type: application/json
 
 {
@@ -233,11 +244,8 @@ Content-Type: application/json
   "inputs": {
     "image": { "type": "base64", "value": "<jpeg bytes>" },
     // WorkflowParameter values go HERE, not in a sibling object.
-    "confidence": 0.4,
-    "iou_threshold": 0.3,
-    "class_agnostic_nms": false,
-    "max_detections": 1000,
-    "model_id": "aystro-project/11"
+    "detect_confidence": 0.4,
+    "detect_model_id": "aystro-project-v2/2"
   }
 }
 ```
@@ -248,17 +256,22 @@ Content-Type: application/json
 >
 > This is unusually hard to notice: with default values an ignored block and an
 > honoured one produce identical output. It only surfaces when a non-default
-> value fails to take effect. To check, send a deliberately absurd value:
+> value fails to take effect. It's also why sending the *wrong parameter
+> names* is silent too — a client built for a single-model workflow's
+> `model_id` will not error against this pipeline's `detect_model_id`, it will
+> just quietly run the workflow's own baked-in defaults. To check, send a
+> deliberately absurd value:
 >
 > ```bash
 > # If parameters are honoured this returns zero detections.
 > curl -sS -X POST https://<deployment>/api/detect \
 >   -H 'Content-Type: application/json' \
 >   -d '{"inputs":{"image":{"type":"base64","value":"..."}},
->        "parameters":{"confidence":0.99}}'
+>        "parameters":{"detect_confidence":0.99}}'
 > ```
 >
-> A nonexistent `model_id` returning an ordinary result is the same tell.
+> A nonexistent `detect_model_id` returning an ordinary result is the same
+> tell.
 
 Each call has a **45s timeout** and **up to 3 attempts** with exponential
 backoff (500ms, 1s). Only retryable failures are repeated — a `401` from a bad
@@ -274,21 +287,38 @@ surfaces as a typed `DetectionException`:
 
 ### The response
 
-A real response, recorded from the live serverless endpoint and checked in as
-`test/fixtures/workflow_response.json`:
+A real response, recorded from a live production call against a real shelf
+photo and checked in as `test/fixtures/workflow_response.json`:
 
 ```json
 { "outputs": [ { "predictions": {
-    "image": { "width": 720, "height": 540 },
+    "image": { "width": 768, "height": 614 },
     "predictions": [
-      { "x": 624, "y": 70, "width": 48, "height": 140,
-        "confidence": 0.448, "class": "coca-cola", "class_id": 0,
+      { "x": 212.5, "y": 459.5, "width": 77, "height": 187,
+        "confidence": 0.9993, "class": "xl_energy", "class_id": 4,
+        "detection_id": "...", "parent_id": "image" },
+      { "x": 217, "y": 123.5, "width": 40, "height": 97,
+        "confidence": 0.9993, "class": "coca-cola", "class_id": 5,
         "detection_id": "...", "parent_id": "image" }
+    ] },
+  "raw_detections": {
+    "image": { "width": 768, "height": 614 },
+    "predictions": [
+      { "x": 212.5, "y": 459.5, "width": 77, "height": 187,
+        "confidence": 0.981, "class": "product", "class_id": 0,
+        "detection_id": "...", "parent_id": "image" }
+      // ... one "product" entry per box, before brand classification
     ] } } ],
   "profiler_trace": [] }
 ```
 
-Three things worth knowing, all verified against the live endpoint:
+Two outputs come back, not one: `predictions` is the brand-refined result the
+app reads (`refine.predictions` in the workflow), and `raw_detections` is the
+detector's own class-agnostic output before classification — every box is
+labelled `product`. `predictions` is declared first, and the parser picks
+whichever output it recognises first, so this ordering matters.
+
+Things worth knowing, all verified against the live endpoint:
 
 - The envelope key is **`outputs`**. Some tooling (the Roboflow MCP server among
   it) normalises the same payload to `result`, so the parser accepts both.
@@ -302,7 +332,9 @@ hard-code the output name:
 
 - It **discovers** which output holds the detections by probing each one for a
   recognisable shape, so renaming `predictions` in the Roboflow editor — or
-  adding a visualisation output — will not break the app.
+  adding a visualisation output — will not break the app. This is what makes a
+  2-output pipeline parse correctly with the same code that handled the old
+  single-output workflow.
 - It accepts both `outputs` (the REST endpoint) and `result` (normalised by some
   tooling) envelopes.
 - It reads **only the fields the UI uses**. Segmentation `points` are dropped at
@@ -312,13 +344,11 @@ hard-code the output name:
   block, so none come back today; the path exists for when one is added.
 - An empty prediction list is a valid result, not an error.
 
-### ⚠️ Inference is not side-effect free
+### Inference has no dataset side effect
 
-The published workflow includes a `roboflow_core/roboflow_dataset_upload` step.
-**Every successful detection call also uploads the photo into the
-`aystro-project` dataset** under an `active_learning` batch, consuming upload
-quota. That is the workflow's own behaviour, not this client's — remove that
-step in the Roboflow editor if you don't want captures retained.
+Unlike an earlier version of this workflow, `aystro-detect-classify-brand` has
+no `roboflow_core/roboflow_dataset_upload` step — a detection call here does
+not upload the photo into any Roboflow dataset or consume upload quota.
 
 ---
 
@@ -354,13 +384,13 @@ flutter analyze
 flutter test
 ```
 
-30 tests, no network and no API key required. The suite covers:
+206 tests, no network and no API key required. The suite covers:
 
 - **Smoke test** (`test/services/roboflow_service_test.dart`) — runs
   `RoboflowService.detectProducts()` over a sample image with the HTTP layer
-  stubbed to replay the *real* recorded workflow response, asserting the
-  expected output key (`predictions`) and detection fields are present and
-  parsed correctly.
+  stubbed to replay the *real* recorded pipeline response, asserting the
+  expected output key (`predictions`, ahead of the sibling `raw_detections`
+  output) and detection fields are present and parsed correctly.
 - **Request shape** — asserts the outgoing body carries `api_key`, a base64
   `inputs.image`, and parameter names matching the workflow's declared inputs.
 - **Response envelopes** — both `outputs` and `result` parse identically, and a
@@ -383,7 +413,9 @@ flutter test
 - **Never put a real key in `.env` for a web build.** It becomes a public URL.
   Web deployments rely on the `/api/detect` proxy; `scripts/check-web-bundle.sh`
   enforces this.
-- Detection accuracy is bounded by the `aystro-project/1` model, which currently
-  knows three classes.
+- Detection accuracy is bounded by the trained models behind the pipeline:
+  `aystro-project-v2/2` (detector, mAP@50 ~89%) and `aystro-brand-classifier/1`
+  (brand classifier, six classes: `coca-cola`, `pepsi`, `fanta`, `sprite`,
+  `cappy`, `xl_energy`).
 - Captured images are resized by the camera preset (`ResolutionPreset.high`) and
   gallery picks are capped at 2048px to keep base64 payloads reasonable.
