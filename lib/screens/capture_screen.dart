@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -5,9 +7,11 @@ import 'package:flutter/services.dart';
 import '../config/app_config.dart';
 import '../models/capture_aspect_ratio.dart';
 import '../models/capture_draft.dart';
+import '../models/capture_quality.dart';
 import '../models/capture_target.dart';
 import '../models/detection_result.dart';
 import '../models/model_option.dart';
+import '../services/blur_detector.dart';
 import '../services/camera_service.dart';
 import '../services/detection_exception.dart';
 import '../services/detection_service.dart';
@@ -228,7 +232,33 @@ class _CaptureScreenState extends State<CaptureScreen>
       _errorMessage = null;
     });
 
+    // Local and fast -- runs alongside the Roboflow round-trip rather than
+    // blocking it, and normally resolves well before it does.
+    unawaited(_warnIfBlurry(bytes));
+
     await _analyze();
+  }
+
+  /// Advisory only, same as [_warnIfLooksTooFar]. A blurry photo can still
+  /// carry usable detections, so this offers a retake rather than forcing
+  /// one or skipping the Roboflow call.
+  Future<void> _warnIfBlurry(Uint8List bytes) async {
+    final blurry = await BlurDetector.isBlurry(bytes);
+    // The rep may have already retaken by the time this resolves -- only
+    // warn about the photo that is still actually on screen.
+    if (!blurry || !mounted || !identical(_capturedBytes, bytes)) return;
+
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: const Text(
+            'This photo looks blurry. Hold steady and try again.',
+          ),
+          action: SnackBarAction(label: 'Retake', onPressed: _reset),
+          duration: const Duration(seconds: 6),
+        ),
+      );
   }
 
   Future<void> _analyze() async {
@@ -252,6 +282,7 @@ class _CaptureScreenState extends State<CaptureScreen>
         _result = result;
         _isAnalyzing = false;
       });
+      _warnIfLooksTooFar(result);
     } on DetectionException catch (e) {
       if (!mounted) return;
       setState(() {
@@ -259,6 +290,27 @@ class _CaptureScreenState extends State<CaptureScreen>
         _isAnalyzing = false;
       });
     }
+  }
+
+  /// Advisory only -- never blocks saving. A heuristic on box size can be
+  /// wrong (a genuinely sparse shelf looks the same as a distant photo of a
+  /// full one), so this offers a retake rather than forcing one.
+  void _warnIfLooksTooFar(DetectionResult result) {
+    if (!CaptureQualityCheck.looksTooFar(result)) return;
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: const Text(
+            'This looks like it was shot from far away. Try moving closer '
+            'for a more reliable count.',
+          ),
+          action: SnackBarAction(label: 'Retake', onPressed: _reset),
+          duration: const Duration(seconds: 6),
+        ),
+      );
   }
 
   Future<void> _openSettings() async {
@@ -433,11 +485,33 @@ class _CaptureScreenState extends State<CaptureScreen>
                 left: 0,
                 right: 0,
                 bottom: 168,
-                child: Center(
-                  child: AspectRatioSelector(
-                    selected: _aspect,
-                    onSelected: (a) => setState(() => _aspect = a),
-                  ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Purely additive relative to CameraStage -- this sits in
+                    // the screen's own Stack, not layered over the preview
+                    // itself, so it cannot trip the "structurally identical
+                    // subtree" rule CameraStage depends on (see its doc
+                    // comment). A shot taken too far back is the single
+                    // biggest lever on detection quality (see
+                    // CaptureQualityCheck), and it's far cheaper to prevent
+                    // here than to catch after the fact.
+                    const Padding(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 24,
+                        vertical: 10,
+                      ),
+                      child: _FramingHint(
+                        text: 'Fill the guide with the whole shelf',
+                      ),
+                    ),
+                    Center(
+                      child: AspectRatioSelector(
+                        selected: _aspect,
+                        onSelected: (a) => setState(() => _aspect = a),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             Align(
@@ -869,6 +943,52 @@ class _GlassIconButton extends StatelessWidget {
               child: Icon(icon, color: Colors.white, size: 20),
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Compositional guidance shown above the aspect-ratio selector, live-camera
+/// state only.
+///
+/// Distance is the single biggest lever on whether a capture analyses well
+/// (see [CaptureQualityCheck]) -- this is the cheap, before-the-fact half of
+/// that: prime the rep to fill the frame, rather than only warning after a
+/// weak shot has already round-tripped to Roboflow.
+class _FramingHint extends StatelessWidget {
+  final String text;
+
+  const _FramingHint({required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.45),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: Colors.white24, width: 0.5),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(
+              Icons.crop_free_rounded,
+              color: Colors.white70,
+              size: 15,
+            ),
+            const SizedBox(width: 7),
+            Text(
+              text,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 12.5,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
         ),
       ),
     );
