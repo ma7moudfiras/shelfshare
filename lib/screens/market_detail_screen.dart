@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../models/brand_share_of_shelf.dart';
 import '../models/fridge.dart';
+import '../models/market_visit_summary.dart';
 import '../models/point_of_sale.dart';
 import '../models/user_profile.dart';
 import '../services/market_service.dart';
@@ -37,6 +39,8 @@ class _MarketDetailScreenState extends State<MarketDetailScreen> {
 
   List<Fridge>? _fridges;
   Set<String>? _assignedRepIds;
+  List<MarketVisitSummary>? _visits;
+  BrandShareOfShelf? _shareOfShelf;
   String? _error;
   bool _isBusy = false;
 
@@ -63,6 +67,25 @@ class _MarketDetailScreenState extends State<MarketDetailScreen> {
     } on MarketFailure catch (e) {
       if (!mounted) return;
       setState(() => _error = e.message);
+    }
+
+    // Loaded separately from the block above: a rep with nothing submitted
+    // yet, or a share-of-shelf query hiccup, should not blank out the fridge
+    // and coverage sections that already loaded fine.
+    try {
+      final visits = await widget.marketService.recentVisits(_market.id);
+      final share = await widget.marketService.shareOfShelf(_market.id);
+      if (!mounted) return;
+      setState(() {
+        _visits = visits;
+        _shareOfShelf = share;
+      });
+    } on MarketFailure {
+      if (!mounted) return;
+      setState(() {
+        _visits = const [];
+        _shareOfShelf = const BrandShareOfShelf.empty();
+      });
     }
   }
 
@@ -201,6 +224,23 @@ class _MarketDetailScreenState extends State<MarketDetailScreen> {
                       ),
                       const SizedBox(height: 8),
                       _FridgeSection(fridges: _fridges),
+                      const SizedBox(height: 28),
+                      _SectionHeader(
+                        title: 'Share of shelf',
+                        subtitle:
+                            'Across every submitted capture at this market, '
+                            'brand by brand.',
+                      ),
+                      const SizedBox(height: 8),
+                      _ShareOfShelfSection(share: _shareOfShelf),
+                      const SizedBox(height: 28),
+                      _SectionHeader(
+                        title: 'Submissions',
+                        subtitle:
+                            'What reps have captured and submitted here.',
+                      ),
+                      const SizedBox(height: 8),
+                      _SubmissionsSection(visits: _visits, reps: widget.reps),
                       const SizedBox(height: 28),
                       _SectionHeader(
                         title: 'Who covers this market',
@@ -439,6 +479,161 @@ class _CoverageSection extends StatelessWidget {
               title: Text(rep.displayName),
               subtitle: rep.email == null ? null : Text(rep.email!),
               controlAffinity: ListTileControlAffinity.leading,
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// A brand-by-brand percentage breakdown of every submitted capture at this
+/// market, each brand expandable into whatever finer-grained classes the
+/// pipeline currently distinguishes for it.
+class _ShareOfShelfSection extends StatelessWidget {
+  final BrandShareOfShelf? share;
+
+  const _ShareOfShelfSection({required this.share});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final data = share;
+
+    if (data == null) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 24),
+        child: Center(child: CircularProgressIndicator(strokeWidth: 2.4)),
+      );
+    }
+
+    if (data.isEmpty) {
+      return Card(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Text(
+            'Nothing submitted here yet. Once a rep submits a visit, its '
+            'share of shelf shows up here.',
+            style: theme.textTheme.bodySmall?.copyWith(height: 1.4),
+          ),
+        ),
+      );
+    }
+
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        children: [
+          for (final brand in data.brands)
+            ExpansionTile(
+              title: Text(
+                _titleCase(brand.brand),
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              trailing: Text(
+                '${brand.percentage.round()}%',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.w600,
+                  color: theme.colorScheme.primary,
+                ),
+              ),
+              children: [
+                for (final variant in brand.variants)
+                  ListTile(
+                    dense: true,
+                    title: Text(variant.className),
+                    trailing: Text('${variant.percentage.round()}%'),
+                  ),
+              ],
+            ),
+        ],
+      ),
+    );
+  }
+
+  static String _titleCase(String value) => value
+      .replaceAll('_', ' ')
+      .split('-')
+      .map((w) => w.isEmpty ? w : '${w[0].toUpperCase()}${w.substring(1)}')
+      .join(' ');
+}
+
+/// Recent submitted visits at this market: who, when, and how much.
+class _SubmissionsSection extends StatelessWidget {
+  final List<MarketVisitSummary>? visits;
+  final List<UserProfile> reps;
+
+  const _SubmissionsSection({required this.visits, required this.reps});
+
+  String _repName(String repId) {
+    for (final rep in reps) {
+      if (rep.id == repId) return rep.displayName;
+    }
+    return 'Unknown rep';
+  }
+
+  static String _formatDate(DateTime? utc) {
+    if (utc == null) return 'Unknown date';
+    final local = utc.toLocal();
+    const months = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+    ];
+    final hour24 = local.hour;
+    final hour12 = hour24 % 12 == 0 ? 12 : hour24 % 12;
+    final minute = local.minute.toString().padLeft(2, '0');
+    final period = hour24 < 12 ? 'AM' : 'PM';
+    return '${months[local.month - 1]} ${local.day}, $hour12:$minute $period';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final items = visits;
+
+    if (items == null) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 24),
+        child: Center(child: CircularProgressIndicator(strokeWidth: 2.4)),
+      );
+    }
+
+    if (items.isEmpty) {
+      return Card(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Text(
+            'No submissions yet. A rep assigned here who submits a visit '
+            'will show up in this list.',
+            style: theme.textTheme.bodySmall?.copyWith(height: 1.4),
+          ),
+        ),
+      );
+    }
+
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        children: [
+          for (final visit in items)
+            ListTile(
+              leading: CircleAvatar(
+                radius: 16,
+                child: Icon(Icons.person_outline, size: 18),
+              ),
+              title: Text(_repName(visit.repId)),
+              subtitle: Text(
+                '${_formatDate(visit.submittedAt)}  ·  '
+                '${visit.captureCount} '
+                '${visit.captureCount == 1 ? 'capture' : 'captures'}',
+              ),
+              trailing: Text(
+                '${visit.detectionCount}',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
             ),
         ],
       ),

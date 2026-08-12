@@ -295,22 +295,39 @@ class _CaptureScreenState extends State<CaptureScreen>
   /// Advisory only -- never blocks saving. A heuristic on box size can be
   /// wrong (a genuinely sparse shelf looks the same as a distant photo of a
   /// full one), so this offers a retake rather than forcing one.
+  ///
+  /// A popup rather than the blurry-photo warning's SnackBar: a SnackBar can
+  /// go unnoticed at the bottom of the screen while the rep is already
+  /// looking at the detection overlay, and this is the one warning worth
+  /// interrupting them for -- a shot too far away silently undercounts every
+  /// product on the shelf.
   void _warnIfLooksTooFar(DetectionResult result) {
     if (!CaptureQualityCheck.looksTooFar(result)) return;
     if (!mounted) return;
 
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          content: const Text(
-            'This looks like it was shot from far away. Try moving closer '
-            'for a more reliable count.',
-          ),
-          action: SnackBarAction(label: 'Retake', onPressed: _reset),
-          duration: const Duration(seconds: 6),
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Photo looks far away'),
+        content: const Text(
+          'This looks like it was shot from far away, which can make the '
+          'count unreliable. Try moving closer to the shelf.',
         ),
-      );
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Use anyway'),
+          ),
+          FilledButton(
+            onPressed: () {
+              Navigator.of(dialogContext).pop();
+              _reset();
+            },
+            child: const Text('Retake'),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _openSettings() async {

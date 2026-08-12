@@ -1,5 +1,7 @@
+import 'package:shelf_monitor/models/brand_share_of_shelf.dart';
 import 'package:shelf_monitor/models/capture_draft.dart';
 import 'package:shelf_monitor/models/fridge.dart';
+import 'package:shelf_monitor/models/market_visit_summary.dart';
 import 'package:shelf_monitor/models/point_of_sale.dart';
 import 'package:shelf_monitor/services/market_service.dart';
 import 'package:shelf_monitor/services/visit_service.dart';
@@ -9,6 +11,8 @@ class FakeMarketService implements MarketService {
   List<PointOfSale> marketList;
   List<Fridge> fridgeList;
   Set<String> assigned;
+  List<MarketVisitSummary> visitList;
+  BrandShareOfShelf share;
 
   /// Set to make the next call fail, as an unreachable database would.
   String? failWith;
@@ -22,6 +26,8 @@ class FakeMarketService implements MarketService {
     this.marketList = const [],
     this.fridgeList = const [],
     Set<String>? assigned,
+    this.visitList = const [],
+    this.share = const BrandShareOfShelf.empty(),
   }) : assigned = assigned ?? {};
 
   void _maybeFail() {
@@ -108,6 +114,21 @@ class FakeMarketService implements MarketService {
     } else {
       this.assigned = {...this.assigned}..remove(profileId);
     }
+  }
+
+  @override
+  Future<List<MarketVisitSummary>> recentVisits(
+    String pointOfSaleId, {
+    int limit = 20,
+  }) async {
+    _maybeFail();
+    return visitList;
+  }
+
+  @override
+  Future<BrandShareOfShelf> shareOfShelf(String pointOfSaleId) async {
+    _maybeFail();
+    return share;
   }
 }
 

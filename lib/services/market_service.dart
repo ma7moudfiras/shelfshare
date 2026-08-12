@@ -2,7 +2,9 @@ import 'dart:math';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../models/brand_share_of_shelf.dart';
 import '../models/fridge.dart';
+import '../models/market_visit_summary.dart';
 import '../models/point_of_sale.dart';
 
 /// Raised when a market operation is refused or fails.
@@ -71,6 +73,20 @@ abstract class MarketService {
     required String pointOfSaleId,
     required bool assigned,
   });
+
+  /// Submitted visits recorded at this market, most recent first.
+  ///
+  /// This is the only place a company admin can see what a rep actually
+  /// captured -- until this existed, data flowed into `visits`/`captures`/
+  /// `detections` with no screen reading any of it back.
+  Future<List<MarketVisitSummary>> recentVisits(
+    String pointOfSaleId, {
+    int limit = 20,
+  });
+
+  /// Brand -> variant breakdown across every kept detection from every
+  /// submitted visit at this market.
+  Future<BrandShareOfShelf> shareOfShelf(String pointOfSaleId);
 }
 
 class SupabaseMarketService implements MarketService {
@@ -255,6 +271,54 @@ class SupabaseMarketService implements MarketService {
           .eq('point_of_sale_id', pointOfSaleId);
     }
   }, 'Could not change that assignment.');
+
+  @override
+  Future<List<MarketVisitSummary>> recentVisits(
+    String pointOfSaleId, {
+    int limit = 20,
+  }) => _guard(() async {
+    final rows = await _client
+        .from('visits')
+        .select('id, rep_id, submitted_at, captures(id, detection_count)')
+        .eq('point_of_sale_id', pointOfSaleId)
+        .eq('status', 'submitted')
+        .order('submitted_at', ascending: false)
+        .limit(limit);
+    return rows.map(MarketVisitSummary.fromJson).toList();
+  }, 'Could not load submissions for this market.');
+
+  @override
+  Future<BrandShareOfShelf> shareOfShelf(String pointOfSaleId) =>
+      _guard(() async {
+        final rows = await _client
+            .from('visits')
+            .select('captures(detections(roboflow_class, removed))')
+            .eq('point_of_sale_id', pointOfSaleId)
+            .eq('status', 'submitted');
+
+        final classNames = <String>[];
+        for (final visit in rows) {
+          final captures = visit['captures'];
+          if (captures is! List) continue;
+          for (final capture in captures) {
+            final detections = capture is Map ? capture['detections'] : null;
+            if (detections is! List) continue;
+            for (final detection in detections) {
+              if (detection is! Map) continue;
+              // Rejected boxes stay in the table so the model's original
+              // answer is recoverable, but they were not real products on
+              // the shelf and must not count toward the share.
+              if (detection['removed'] == true) continue;
+              final className = detection['roboflow_class'] as String?;
+              if (className != null && className.isNotEmpty) {
+                classNames.add(className);
+              }
+            }
+          }
+        }
+
+        return BrandShareOfShelf.fromClassNames(classNames);
+      }, 'Could not load the share of shelf for this market.');
 
   /// Blank optional text is stored as null, so "not recorded" is one value
   /// rather than two that sort and compare differently.
