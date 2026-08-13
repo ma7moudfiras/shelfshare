@@ -113,7 +113,13 @@ async function fetchProjectClasses(apiBase, workspace, project, apiKey, signal) 
     const res = await fetch(url, { signal });
     if (!res.ok) return {};
     const data = await res.json();
-    return data?.project?.classes ?? {};
+    const classes = data?.project?.classes ?? {};
+    // `project.classes` is every tag ever applied to any image, including
+    // one-off data-hygiene flags like `review-not-coca-cola` (never a real
+    // predictable class) -- strip those before they reach the client.
+    return Object.fromEntries(
+      Object.entries(classes).filter(([name]) => !name.startsWith('review-')),
+    );
   } catch {
     return {};
   }
