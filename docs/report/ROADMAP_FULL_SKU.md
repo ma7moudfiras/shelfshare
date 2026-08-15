@@ -1,0 +1,120 @@
+# Roadmap: Full SKU-Level Classification
+
+Target output format, one string per detection, e.g.:
+
+```
+coca-can-classic-slim330ml
+coca-bottle-zero-1.25L
+cappy-bottle-grape-1.5L
+fanta-glass-orange-250ml
+pepsi-can-classic-fat330ml
+```
+
+Pattern: `{brand}-{package}-{variant}-{size}` — `package` ∈ {can, bottle
+(implicitly plastic), glass}; can sizes fold shape into the size token
+(`slim330ml` / `fat330ml`); bottle sizes are plain volume.
+
+This is a durable planning record — update statuses here as work lands, don't
+let it go stale. See `RESEARCH_NOTES.md` for the evidence/findings feeding
+the report, and `CLAUDE.md` for Roboflow project-naming conventions.
+
+## Decisions already made (don't re-litigate)
+
+- **Size estimation, phased approach** (user's call, 2026-08-15): try the
+  reference-object geometric approach first (compare box dimensions against
+  a known-size reference product in the same photo — extends the existing
+  cross-detection height-comparison logic already in `CanShapeRule`). If
+  measured accuracy is inadequate, fall back to a visual size classifier —
+  but run a small feasibility pilot (~30 images) before committing to full
+  data collection for that fallback, since it isn't yet established that
+  size is even visually distinguishable from these crop resolutions.
+- **Cappy flavor diversity confirmed real** (user's call, 2026-08-15): Cappy
+  has genuine, visually-distinct flavor variants in market. Build its
+  flavor classifier directly (Phase 1 below), unlike Pepsi/Sprite/XL Energy
+  which are unconfirmed and need an audit first.
+- **Every new classifier must be evaluated before being trusted or wired
+  into production** — this was skipped for the brand and Fanta classifiers
+  (both show `metrics: null`); don't repeat that omission going forward.
+
+## Phase 0 — quick wins, no new data needed
+
+- [ ] Run `Evaluate` on `aystro-brand-classifier` v1 and
+  `test-aystro-brand-classifier` v4 — no recorded accuracy exists for
+  either despite both serving live traffic.
+- [ ] Finish `test-aystro-packaging-classifier`: resume paused labeling
+  (136/1606 done as of 2026-08-15), generate version, train, evaluate.
+- [ ] Audit existing Pepsi/Sprite/XL Energy captures for real flavor
+  diversity (same method as the Coca-Cola audit) before deciding whether to
+  build classifiers for them.
+
+## Phase 1 — Cappy flavor classifier
+
+- [ ] Visual audit of existing captured Cappy images: how much of the
+  confirmed real-world diversity is actually present in current data.
+- [ ] Contact-sheet label by flavor, create project, upload, train,
+  evaluate.
+- [ ] If existing data is too thin/undiverse: flag for targeted photography
+  (folds into Phase 2).
+
+## Phase 2 — field photography (owned by the user/field team; the real
+## bottleneck — everything below depends on this, start it early)
+
+- [ ] Real Coca-Cola flavor variants (Zero, Diet, Light, etc.) — current
+  data audited and found almost entirely "classic," not usable to train a
+  flavor classifier as-is.
+- [ ] Glass-packaged products across brands — only 2 genuine examples exist
+  in the entire 1,608-image labelled corpus today.
+- [ ] Cappy flavors, if Phase 1's audit finds gaps.
+- [ ] A 50–100 image **size reference validation set**: photos where the
+  real-world size is known for certain (photographer records it, or shoots
+  a known-size product alongside others as a scale reference). Required to
+  validate *any* size-estimation approach (Phase 3) before trusting it —
+  neither the geometric nor the classifier approach can be evaluated
+  without this.
+
+## Phase 3 — the size/volume axis (hardest, technically)
+
+- [ ] **Step 0 (cheap, do first):** check whether size is even ambiguous
+  per SKU in this market — if a given brand+flavor+package combination is
+  only ever sold in one real size, size can be looked up from a small
+  catalog table instead of detected visually at all. Could eliminate most
+  of the hard cases below.
+- [ ] Build the reference-object geometric estimator (extends
+  `CanShapeRule`'s existing reference-height comparison pattern).
+- [ ] **Validate its accuracy against the Phase 2 reference set before
+  trusting it in production** — `CanShapeRule`'s own geometric rule already
+  turned out unreliable in practice; do not repeat that mistake by skipping
+  verification this time.
+- [ ] If inadequate: run the ~30-image feasibility pilot, then (if
+  feasible) audit/label/train/evaluate a visual size classifier. Can
+  slim/fat shape folds into this same axis rather than staying a separate
+  suspended rule.
+
+## Phase 4 — merge logic
+
+- [ ] Extend the `MergeBrandClasses`-style custom Workflow block to
+  assemble brand + flavor (where the brand has one) + package + size into
+  one final label string.
+- [ ] Document the exact naming convention precisely, including what
+  happens when an axis doesn't yet exist for a given brand (e.g. Sprite has
+  no flavor classifier yet — does the string omit that segment, or does it
+  wait until one exists?).
+- [ ] Test live via `workflows_run` against real photos. Watch for the same
+  class of bug already hit once: custom blocks receive per-crop inputs as
+  scalars, not lists.
+
+## Phase 5 — app integration
+
+- [ ] Confirm `BrandShareOfShelf`'s brand-root matching
+  (`lib/models/brand_share_of_shelf.dart`) and any other className-parsing
+  logic handle the longer compound SKU strings correctly.
+- [ ] Regression test.
+
+## Time shape (not a fixed date)
+
+Everything engineering/training-side (Phase 0, Phase 1 training, Phase 4,
+Phase 5) is on the order of hours to a few days each, consistent with how
+long the Fanta flavor classifier actually took this engagement. The real
+schedule driver is Phase 2 (field photography) — every later phase is
+gated on it, so it should start as early as possible in parallel with
+Phase 0/1.
