@@ -90,6 +90,40 @@ the report, and `CLAUDE.md` for Roboflow project-naming conventions.
   slim/fat shape folds into this same axis rather than staying a separate
   suspended rule.
 
+## Phase 3.5 — fix unpruned branch execution before adding more flavor classifiers
+
+**Finding (2026-08-15, confirmed by reading the live workflow spec, not
+assumed):** the current `brand_fanta` step runs unconditionally on every
+crop (`images: $steps.crop.crops`) regardless of what `brand_general`
+predicted — the `MergeBrandClasses` step only *selects* which result to
+keep, it does not prevent the Fanta classifier from running on non-Fanta
+crops. This means classifier calls per photo currently scale as
+`1 + N×(1+K)` where `K` = number of brand-specific flavor classifiers —
+wastefully linear in `K`, since only 1-of-K calls is ever useful per crop.
+`K` is about to grow from 1 (Fanta) to 3 (+Coca-Cola, +Cappy) per this
+roadmap, so this should be fixed before that, not after.
+
+Roboflow Workflows has a native `Switch Case` block
+(`roboflow_core/switch_case@v1`) that routes execution to exactly one
+branch by matching a value (e.g. `brand_general`'s output) against cases —
+non-matching branches don't execute at all. This is confirmed available on
+the platform (schema inspected), not assumed.
+
+- [ ] Prototype `Switch Case` routing on the existing Fanta branch first
+  (low risk, already working, easy to compare against current behavior).
+- [ ] Verify via `workflows_run` against a real multi-product photo that it
+  routes **per crop within the batch**, not per whole image — this is the
+  one part of the mechanism not yet confirmed live, and per the
+  `MergeBrandClasses` scalar-vs-list lesson, must be verified against real
+  output before being trusted, not assumed from the schema alone.
+- [ ] Once confirmed, this converts the flavor-classification layer from
+  `O(N×K)` to true `O(N)`, independent of how many brands get their own
+  flavor classifier. Extend the routed pattern to Coca-Cola and Cappy
+  instead of adding them as further unconditional parallel branches.
+- [ ] The packaging-material and size axes are shared/brand-agnostic by
+  design and already stay `O(N)` regardless of brand count — they don't
+  need this fix, only the per-brand flavor layer does.
+
 ## Phase 4 — merge logic
 
 - [ ] Extend the `MergeBrandClasses`-style custom Workflow block to
