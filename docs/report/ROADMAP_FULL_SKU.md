@@ -166,15 +166,17 @@ the platform (schema inspected), not assumed.
   correctness bug above is fixed, get a proper timing comparison by testing
   the *saved* draft workflow (still not the live one) so both runs pay the
   same warm-workflow overhead.
-- [x] Correctness confirmed. **Not yet cleanly timed** — the ~80s vs. ~51s
-  figures from the earlier (broken) prototype are still the only wall-clock
-  data point, and are still not a fair comparison (ad-hoc `workflow_specs_run`
-  spec vs. warm saved `workflows_run` workflow). Before extending to
-  Coca-Cola/Cappy, get one clean timing run: save this fixed spec as a
-  *draft/test* workflow (not the live one) and time it via `workflows_run`
-  the same way the baseline was timed, so both sides pay the same
-  warm-workflow overhead.
-- [ ] Once cleanly timed, this converts the flavor-classification layer from
+- [x] Correctness confirmed. **Cleanly timed, 2026-08-16.** Saved the fixed
+  spec as its own workflow (`Test - switch-case-fanta-timing`, id
+  `wcAqN3tElm50N91hhxWg`) — separate from the live workflow — so both sides
+  of the comparison could run through the identical `workflows_run` call
+  path on a saved/warm workflow (removing the earlier ad-hoc-spec
+  confound). Ran back-to-back against the same 60-crop test photo:
+  **baseline (live, unconditional) 40.32s → Switch Case 14.20s — 65%
+  faster, 26.1s saved**, with identical final `brand_predictions` in both
+  runs (same 60 labels, byte-for-byte). This is a real, apples-to-apples
+  measurement, not an estimate — reported as such.
+- [ ] This converts the flavor-classification layer from
   `O(N×K)` to true `O(N)`, independent of how many brands get their own
   flavor classifier. Extend the routed pattern to Coca-Cola and Cappy
   (each brand becomes one more `switch_case` case and one more entry,

@@ -233,9 +233,24 @@ branch appear to break silently (null, not an error) — this is a real
 platform behavior worth remembering, not just a one-off bug in this
 specific block.
 
-**Still open**: timing (see below, unchanged — no clean apples-to-apples
-number yet), and the live workflow has still not been touched — everything
-so far tested via `workflow_specs_run` on an inline spec.
+**Timing, done properly right after**: saved the fixed spec as its own
+workflow (`Test - switch-case-fanta-timing`, id `wcAqN3tElm50N91hhxWg`,
+separate from the live one) so both sides of the comparison could run
+through `workflows_run` on a saved/warm workflow — the same call path,
+removing the earlier ad-hoc-spec confound. Ran back-to-back against the
+same 60-crop test photo: **baseline (live, unconditional) 40.32s → Switch
+Case 14.20s — 65% faster, 26.1s saved**, with byte-for-byte identical
+`brand_predictions` in both runs. This is a real measurement, not an
+estimate. (Note: this baseline reading, 40.32s, differs from the very first
+baseline reading earlier the same day, ~51.4s — normal run-to-run variance
+on shared serverless infra; the 40.32s/14.20s pair is the one to cite since
+both were measured back-to-back under identical conditions.)
+
+**Still open**: the live workflow has still not been touched — everything
+so far tested via saved *separate* test workflows or inline
+`workflow_specs_run` specs, never `workflows_update` on the production
+`test-aystro-detect-classify-brand` workflow. That, plus extending the
+pattern to Coca-Cola and Cappy, is pending explicit go-ahead.
 
 ## 2026-08-16 — Switch Case prototype: routing confirmed, but merge logic breaks non-Fanta products
 
