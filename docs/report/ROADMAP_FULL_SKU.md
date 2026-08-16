@@ -123,27 +123,37 @@ the platform (schema inspected), not assumed.
   crops came back with a null `fanta_debug` entry, meaning the classifier
   was not invoked on them. **This is a real, measured reduction: 12/60
   (20%) invocation rate for the Fanta classifier vs. 60/60 (100%) today.**
-- [ ] **BLOCKER found, not yet fixed (2026-08-16): this insertion breaks
-  correctness for every non-Fanta product.** `merge_brands` (the custom
-  `MergeBrandClasses` block) takes two inputs: `general_classes` (from
-  `extract_general`, unconditional/full batch) and `fanta_classes` (from
-  `extract_fanta`, now downstream of the `switch_case`-gated `brand_fanta`,
-  restricted to only the matched subset). In the live test, `merge_brands`'
-  output (`brand_predictions`) came back **null for all 48 non-Fanta crops**
-  — including cappy/sprite/coca-cola crops whose `general_classes` value was
-  present and correct in `extract_general`'s own output. Only the 12 routed
-  Fanta crops resolved correctly. The execution engine appears to restrict a
-  step's whole batch scope to the narrowest scope of any of its inputs, so
-  merging one gated branch with one ungated branch silently drops the
-  ungated branch's values wherever the gated branch didn't run. **Do not
-  wire this pattern into the live workflow as currently structured** — it
-  would silently null out brand for every non-Fanta detection in production.
-  Needs a real fix (e.g. mirroring `merge_brands`-equivalent logic *inside*
-  each switch-case branch so nothing downstream depends on a mix of gated
-  and ungated inputs, or finding a dedicated branch-merge/"first non-null"
-  block) before this can be extended to Coca-Cola and Cappy. Re-verify live
-  against a real photo again after any fix attempt — do not assume it's
-  correct from the spec alone, per the same lesson that caught this bug.
+- [x] **BLOCKER found (2026-08-16) and FIXED (same day).** First attempt:
+  `merge_brands` (the custom `MergeBrandClasses` block) took two inputs —
+  `general_classes` (unconditional/full batch) and `fanta_classes` (now
+  downstream of the gated `brand_fanta`, restricted to the matched subset).
+  Live test showed `brand_predictions` came back **null for all 48
+  non-Fanta crops**, even though `extract_general`'s own output was correct
+  for every one of them — the execution engine appears to scope a step to
+  the narrowest scope among its inputs, so mixing one gated and one ungated
+  input silently drops the ungated branch's values outside the gated scope.
+  A second attempt (adding `merge_brands` as the switch_case's
+  `default_next_steps` target too) made it **worse** — everything came back
+  null, including the Fanta crops. **The actual fix**: stop using the
+  custom Python block to merge branches at all. Roboflow Workflows ships a
+  purpose-built block for exactly this — `roboflow_core/first_non_empty_or_default@v1`
+  ("First Non Empty Or Default"), explicitly documented for "merging
+  alternative execution branches." Replaced `merge_brands` with:
+  `{"type": "roboflow_core/first_non_empty_or_default@v1", "data":
+  ["$steps.extract_fanta.output", "$steps.extract_general.output"],
+  "default": "unclassified"}` — picks the Fanta flavor when present, else
+  falls back to the general brand, else `"unclassified"`. Re-ran live
+  against the same 60-crop photo: **every crop now resolves correctly** —
+  cappy/sprite/coca-cola crops keep their plain brand label, and all 12
+  Fanta crops resolve to their flavor (11× `fanta-orange`, 1×
+  `fanta-redapple`), an exact match to the pre-fix
+  baseline's brand assignments plus flavor resolution on top, with the
+  Fanta classifier invoked on only 12/60 crops instead of 60/60. The
+  `MergeBrandClasses` custom Python block and its `dynamic_blocks_definitions`
+  entry are no longer needed for this merge — `first_non_empty_or_default@v1`
+  replaces it. Confirmed live, not assumed — this is the pattern to extend
+  to Coca-Cola and Cappy (each becomes one more item in the `data` priority
+  list, ordered most-specific-first, general last).
 - [ ] **Timing: inconclusive from this test, not a fair comparison.** The
   Switch Case version was run via `workflow_specs_run` (inline, ad-hoc,
   uncompiled spec) at ~80s wall time, vs. the baseline's ~51s via
@@ -156,11 +166,25 @@ the platform (schema inspected), not assumed.
   correctness bug above is fixed, get a proper timing comparison by testing
   the *saved* draft workflow (still not the live one) so both runs pay the
   same warm-workflow overhead.
-- [ ] Once fixed and confirmed correct AND cleanly timed, this converts the
-  flavor-classification layer from `O(N×K)` to true `O(N)`, independent of
-  how many brands get their own flavor classifier. Extend the routed pattern
-  to Coca-Cola and Cappy instead of adding them as further unconditional
-  parallel branches.
+- [x] Correctness confirmed. **Not yet cleanly timed** — the ~80s vs. ~51s
+  figures from the earlier (broken) prototype are still the only wall-clock
+  data point, and are still not a fair comparison (ad-hoc `workflow_specs_run`
+  spec vs. warm saved `workflows_run` workflow). Before extending to
+  Coca-Cola/Cappy, get one clean timing run: save this fixed spec as a
+  *draft/test* workflow (not the live one) and time it via `workflows_run`
+  the same way the baseline was timed, so both sides pay the same
+  warm-workflow overhead.
+- [ ] Once cleanly timed, this converts the flavor-classification layer from
+  `O(N×K)` to true `O(N)`, independent of how many brands get their own
+  flavor classifier. Extend the routed pattern to Coca-Cola and Cappy
+  (each brand becomes one more `switch_case` case and one more entry,
+  most-specific-first, in the `first_non_empty_or_default` priority list)
+  instead of adding them as further unconditional parallel branches.
+- [ ] Wire the fixed pattern into the actual live
+  `test-aystro-detect-classify-brand` workflow (`workflows_update`) only
+  after the timing check above and explicit user go-ahead — nothing has
+  touched the live workflow so far, all testing has been via
+  `workflow_specs_run` on an inline, unpublished spec.
 - [ ] The packaging-material and size axes are shared/brand-agnostic by
   design and already stay `O(N)` regardless of brand count — they don't
   need this fix, only the per-brand flavor layer does.

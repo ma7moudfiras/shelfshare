@@ -196,6 +196,47 @@ Application" section.
 *Log new findings below this line, newest first, with a date and enough
 context to write up later.*
 
+## 2026-08-16 (later same day) — Switch Case merge bug: fixed
+
+Follow-up to the entry below. Tried two fixes for the "non-Fanta crops come
+back null" bug before finding the real one:
+
+1. Made `merge_brands` (the custom `MergeBrandClasses` Python block) a
+   `default_next_steps` target of the `switch_case`, in addition to being
+   reachable via the Fanta branch — hypothesis was this would make the
+   engine treat it as a proper reconvergence point. **Made it worse**:
+   every crop came back null, including the Fanta ones.
+2. **The actual fix**: stopped using a custom Python block to merge branches
+   at all. Roboflow ships `roboflow_core/first_non_empty_or_default@v1`
+   ("First Non Empty Or Default"), built specifically for "merging
+   alternative execution branches" post-conditional-routing. Replaced
+   `merge_brands` with a call to that block:
+   `data: ["$steps.extract_fanta.output", "$steps.extract_general.output"]`,
+   `default: "unclassified"` — picks the Fanta flavor if present, else the
+   general brand, else `"unclassified"`.
+
+Re-ran live against the same 60-crop test photo. **Every crop resolved
+correctly**: cappy (8), sprite (12), coca-cola (20) crops kept their plain
+brand label with confidence 1 (previously these were coming back
+`unclassified`/confidence 0 in the broken versions); the 12 Fanta crops
+resolved to their flavor (11 `fanta-orange`, 1 `fanta-redapple`) — an exact
+match to the original unconditional baseline's brand assignments, with the
+Fanta classifier now invoked on only 12/60 crops instead of 60/60.
+
+**Lesson for extending to Coca-Cola/Cappy**: don't write a custom Python
+block to merge conditional branches — use `first_non_empty_or_default@v1`,
+ordered most-specific-first (e.g. `[coca_cola_flavor, cappy_flavor,
+fanta_flavor, general_brand]`, though actual per-brand routing needs its
+own switch_case per brand once those classifiers exist). Custom blocks that
+mix an input from *before* a switch_case with an input from *after* a gated
+branch appear to break silently (null, not an error) — this is a real
+platform behavior worth remembering, not just a one-off bug in this
+specific block.
+
+**Still open**: timing (see below, unchanged — no clean apples-to-apples
+number yet), and the live workflow has still not been touched — everything
+so far tested via `workflow_specs_run` on an inline spec.
+
 ## 2026-08-16 — Switch Case prototype: routing confirmed, but merge logic breaks non-Fanta products
 
 Tested per Phase 3.5 of `ROADMAP_FULL_SKU.md`. Method: built a modified copy
