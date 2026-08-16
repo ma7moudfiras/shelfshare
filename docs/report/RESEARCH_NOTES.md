@@ -131,8 +131,12 @@ covered packaging *format* via box-aspect-ratio geometry, never packaging
 - Final label distribution: 860 plastic / 746 can (1606 total) — reasonably
   balanced.
 - New project: `test-aystro-packaging-classifier`. Upload done (1606 images).
-  Labeling in progress (paused mid-way by request; ~136/1606 labeled as of
-  last check). Not yet trained or evaluated.
+  The full `{image_id: label}` map from the visual audit is committed at
+  `docs/report/packaging_material_labels.json` (1606 entries, 860 plastic /
+  746 can) so it survives session resets and is available to any session
+  working on this repo, not just the one that produced it. Labeling
+  (writing these via `annotations_save`) is in progress — paused mid-way
+  more than once by request; not yet trained or evaluated.
 - Per-brand material observations from the audit (useful color for the
   report's discussion of packaging diversity): Cappy is uniformly plastic;
   XL Energy is uniformly can; Sprite and Pepsi split cleanly into a
@@ -195,6 +199,28 @@ Application" section.
 
 *Log new findings below this line, newest first, with a date and enough
 context to write up later.*
+
+## 2026-08-16 (later) — Bulk-write permission prompts: root cause found
+
+Resuming the packaging-material labeling (~1470 remaining `annotations_save`
+calls) kept prompting for approval on every single call, even inside a
+background-delegated Agent, even though `.claude/settings.local.json`
+already had `mcp__Roboflow__annotations_save` explicitly allow-listed
+(added 2026-08-11 for this exact reason) and a Roboflow connector-level
+"always allow" had also been granted. Neither fixed it in the *existing*
+session. Root cause, confirmed by direct test: **permission grants are read
+once when a session starts** — a session already running when a grant is
+added never picks it up, no matter how the grant was made (settings file or
+connector-level). Fix: open a genuinely new session (not just a new message
+in the same conversation) — confirmed via a single test `annotations_save`
+call that ran silently with no prompt in a fresh session. Lesson for any
+future bulk-write task: if permission prompting appears despite an
+already-granted rule, suspect a stale session first, not the rule itself.
+Because scratch-space files (`/tmp/.../scratchpad/`) are session-scoped and
+not visible to a different session, the packaging-material label map was
+moved into the repo itself (`docs/report/packaging_material_labels.json`)
+so a fresh session can pick up the bulk-labeling task without redoing the
+visual audit.
 
 ## 2026-08-16 (later same day) — Switch Case merge bug: fixed
 
