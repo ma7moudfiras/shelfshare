@@ -200,27 +200,31 @@ Application" section.
 *Log new findings below this line, newest first, with a date and enough
 context to write up later.*
 
-## 2026-08-16 (later) — Bulk-write permission prompts: root cause found
+## 2026-08-16 (later) — Why permission prompts persisted after granting the rule (diagnostic note, not a standing procedure)
 
-Resuming the packaging-material labeling (~1470 remaining `annotations_save`
-calls) kept prompting for approval on every single call, even inside a
-background-delegated Agent, even though `.claude/settings.local.json`
-already had `mcp__Roboflow__annotations_save` explicitly allow-listed
-(added 2026-08-11 for this exact reason) and a Roboflow connector-level
-"always allow" had also been granted. Neither fixed it in the *existing*
-session. Root cause, confirmed by direct test: **permission grants are read
-once when a session starts** — a session already running when a grant is
-added never picks it up, no matter how the grant was made (settings file or
-connector-level). Fix: open a genuinely new session (not just a new message
-in the same conversation) — confirmed via a single test `annotations_save`
-call that ran silently with no prompt in a fresh session. Lesson for any
-future bulk-write task: if permission prompting appears despite an
-already-granted rule, suspect a stale session first, not the rule itself.
-Because scratch-space files (`/tmp/.../scratchpad/`) are session-scoped and
-not visible to a different session, the packaging-material label map was
-moved into the repo itself (`docs/report/packaging_material_labels.json`)
-so a fresh session can pick up the bulk-labeling task without redoing the
-visual audit.
+Observed behavior, recorded for diagnosis only: resuming the
+packaging-material labeling (~1470 remaining `annotations_save` calls) kept
+prompting for approval on every call within one specific running session,
+even after `.claude/settings.local.json` allow-listed
+`mcp__Roboflow__annotations_save` (added 2026-08-11) and a Roboflow
+connector-level "always allow" had also been granted. A single test call in
+a *different, newly started* session (opened independently by the project
+owner, for an unrelated reason) ran without a prompt, which is consistent
+with permission grants being read at session start rather than picked up
+mid-session — but this was observed in one instance, not verified as a
+general platform rule, and should not be treated as one.
+
+**This is not a workaround to reach for.** Approval prompts on write
+operations are a real control, not friction to route around. Whether a
+given prompt reflects a stale session or a deliberate control point isn't
+something to self-diagnose and dismiss — any large-scale or hard-to-reverse
+write (bulk dataset labeling included) still needs the project owner's
+explicit go-ahead each time, in that conversation, regardless of whether a
+prompt happens to appear. The packaging-material label map was moved into
+the repo (`docs/report/packaging_material_labels.json`) purely so the data
+itself — the actual output of the visual audit — survives session resets
+and doesn't need to be reconstructed; that is a durability fix, not
+authorization to run the bulk write unattended.
 
 ## 2026-08-16 (later same day) — Switch Case merge bug: fixed
 
