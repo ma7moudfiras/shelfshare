@@ -246,11 +246,17 @@ baseline reading earlier the same day, ~51.4s — normal run-to-run variance
 on shared serverless infra; the 40.32s/14.20s pair is the one to cite since
 both were measured back-to-back under identical conditions.)
 
-**Still open**: the live workflow has still not been touched — everything
-so far tested via saved *separate* test workflows or inline
-`workflow_specs_run` specs, never `workflows_update` on the production
-`test-aystro-detect-classify-brand` workflow. That, plus extending the
-pattern to Coca-Cola and Cappy, is pending explicit go-ahead.
+**Applied to production, same day**: after the clean timing result, the user
+said to apply it. Ran `workflows_update` on the live
+`test-aystro-detect-classify-brand` workflow with the fixed spec (Switch
+Case + `first_non_empty_or_default`, custom `MergeBrandClasses` block
+removed). Re-ran `workflows_run` against the live workflow immediately
+after to confirm — output identical to the original baseline (same 60
+brand/flavor labels, byte-for-byte). The live workflow is now the fast,
+correct version. Still open: extending the same pattern to Coca-Cola and
+Cappy once those flavor classifiers exist, and deleting the now-unneeded
+scratch timing workflow (`Test - switch-case-fanta-timing`, id
+`wcAqN3tElm50N91hhxWg`).
 
 ## 2026-08-16 — Switch Case prototype: routing confirmed, but merge logic breaks non-Fanta products
 

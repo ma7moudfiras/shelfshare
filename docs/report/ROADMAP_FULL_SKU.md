@@ -182,11 +182,20 @@ the platform (schema inspected), not assumed.
   (each brand becomes one more `switch_case` case and one more entry,
   most-specific-first, in the `first_non_empty_or_default` priority list)
   instead of adding them as further unconditional parallel branches.
-- [ ] Wire the fixed pattern into the actual live
-  `test-aystro-detect-classify-brand` workflow (`workflows_update`) only
-  after the timing check above and explicit user go-ahead — nothing has
-  touched the live workflow so far, all testing has been via
-  `workflow_specs_run` on an inline, unpublished spec.
+- [x] **Applied to the live workflow, 2026-08-16.** `workflows_update` on
+  `test-aystro-detect-classify-brand` (id `eeUDKKw0KlOkitKXDmCX`) — the
+  custom `MergeBrandClasses` block and its `dynamic_blocks_definitions`
+  entry are gone; the Fanta branch is now gated by `route_fanta`
+  (`switch_case`) and merged via `first_non_empty_or_default`. Re-verified
+  live immediately after via `workflows_run` against the same test photo:
+  output identical to the pre-change baseline (same 60 brand/flavor labels),
+  confirming the fix is live and correct, not just validated in a copy.
+  Phase 3.5 is done for Fanta. Next: extend the same `switch_case` +
+  `first_non_empty_or_default` pattern to Coca-Cola and Cappy once those
+  flavor classifiers exist (Phase 1 for Cappy is still pending; Coca-Cola's
+  classifier project exists but is waiting on real flavor-diverse data per
+  Phase 2). The scratch timing workflow (`Test - switch-case-fanta-timing`,
+  id `wcAqN3tElm50N91hhxWg`) is no longer needed and can be deleted.
 - [ ] The packaging-material and size axes are shared/brand-agnostic by
   design and already stay `O(N)` regardless of brand count — they don't
   need this fix, only the per-brand flavor layer does.
