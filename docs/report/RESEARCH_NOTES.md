@@ -135,8 +135,10 @@ covered packaging *format* via box-aspect-ratio geometry, never packaging
   `docs/report/packaging_material_labels.json` (1606 entries, 860 plastic /
   746 can) so it survives session resets and is available to any session
   working on this repo, not just the one that produced it. Labeling
-  (writing these via `annotations_save`) is in progress — paused mid-way
-  more than once by request; not yet trained or evaluated.
+  (writing these via `annotations_save`) is now complete — see the
+  "Packaging-material labeling finished" entry below for final counts and
+  the handful of images that needed manual follow-up. Not yet trained or
+  evaluated.
 - Per-brand material observations from the audit (useful color for the
   report's discussion of packaging diversity): Cappy is uniformly plastic;
   XL Energy is uniformly can; Sprite and Pepsi split cleanly into a
@@ -221,6 +223,16 @@ not visible to a different session, the packaging-material label map was
 moved into the repo itself (`docs/report/packaging_material_labels.json`)
 so a fresh session can pick up the bulk-labeling task without redoing the
 visual audit.
+
+**Editorial follow-up (2026-08-16, next session):** don't read the above as
+"a new session bypasses permission review, so use that when prompting is
+inconvenient." Whatever caused prompting to stop in a fresh session, that's
+not something to lean on for skipping human review of large/irreversible
+writes — the fresh session that picked this task back up still confirmed
+directly with the user before running the ~1,463-image bulk write, rather
+than treating this note as standing authorization. Keeping the note for the
+factual record (the stale-grant behavior is real and worth knowing about
+technically), not as a recommended way to avoid checkpoints.
 
 ## 2026-08-16 (later same day) — Switch Case merge bug: fixed
 
@@ -333,3 +345,56 @@ test is the call-count reduction above (60→12 invocations of the Fanta
 classifier for this photo) — that is the real, defensible efficiency gain,
 and it is what should be cited if asked "does this help," not wall-clock
 time from this particular test.
+
+## 2026-08-16 (next session) — Packaging-material labeling finished: 1,603/1,606
+
+Resumed from `docs/report/packaging_material_labels.json` (the 1,606-entry
+plastic/can audit map committed in the previous session). 143 images were
+already labeled and in the dataset from before; the remaining 1,463 were
+delegated to 3 background agents in parallel (per the established
+contact-sheet/background-agent pattern), each working a disjoint ~488-image
+chunk via `annotations_save`.
+
+**Glass class preserved, not overwritten.** Mid-run, the user asked to keep
+the project's existing `glass` class rather than force those images into
+plastic/can per the map. At that point 22 images were already tagged
+`glass` in the live project (pre-dating this session — leftover from before
+the plastic/can-only decision documented in §5, not part of that decision).
+21 of the 22 fell inside the "remaining" set the agents were processing (1
+was already in-dataset and untouched). By the time the correction reached
+all three agents, 14 had already been overwritten to plastic/can — these
+were identified (cross-referencing live `images_search` against the map)
+and restored to `glass` directly. The other 7 were correctly skipped by the
+agents once instructed. All 22 were also confirmed added to the trainable
+dataset (7 of them had a `glass` annotation from before this session but had
+never actually been added to the dataset — fixed as part of this cleanup).
+Final check: `images_search(class_name=glass, in_dataset=true)` → exactly
+22/22, matching the original set with no drift.
+
+**Session-limit interruption.** All 3 agents hit "You've hit your session
+limit" partway through (a real platform limit, not a permission issue) and
+had to be resumed via `SendMessage` with the skip-list attached — worth
+knowing for future bulk-write tasks of this size: budget for at least one
+resume cycle.
+
+**Final result:**
+- In-dataset total: 1,603 images (1,606 map entries − 3 permanent failures)
+- `plastic`: 844, `can`: 737, `glass`: 22 (live `images_search` counts, not
+  the project-summary `classes` stat, which was observed to be stale/out of
+  sync with real-time queries throughout this session and should not be
+  trusted for reporting — verify with `images_search` directly)
+- 3 permanent failures after repeated retries (Roboflow-side `"Unknown
+  error"`, 4 attempts each across the resumed agents and a direct retry):
+  `DrT1Tw6tquGduF9EAwR2`, `BYukrThCYMyENKQtkvp4`, `P4uKKPqqotvCTgyIjli4` —
+  all three were supposed to be `can` per the map. Worth one more retry in
+  a later session or a look at whether these image records are corrupted.
+- Minor, unexplained ~5-image skew between the map's expected plastic/can
+  split (839/745, after removing the 21 glass overrides) and the actual
+  live counts (844/737) — total accounts for exactly (1,606 − 22 glass − 3
+  failures = 1,581 map-driven labels + 22 glass = 1,603, which matches), so
+  no images are missing or double-counted, but a handful of the *original*
+  143 (labeled in an earlier session, before this map existed) likely carry
+  a label that doesn't match this map's judgment for the same image. Not
+  investigated further; flagging for anyone training on this data.
+- Not yet trained or evaluated — this only completes the labeling step from
+  §5.
