@@ -109,17 +109,58 @@ branch by matching a value (e.g. `brand_general`'s output) against cases —
 non-matching branches don't execute at all. This is confirmed available on
 the platform (schema inspected), not assumed.
 
-- [ ] Prototype `Switch Case` routing on the existing Fanta branch first
+- [x] Prototype `Switch Case` routing on the existing Fanta branch first
   (low risk, already working, easy to compare against current behavior).
-- [ ] Verify via `workflows_run` against a real multi-product photo that it
-  routes **per crop within the batch**, not per whole image — this is the
-  one part of the mechanism not yet confirmed live, and per the
-  `MergeBrandClasses` scalar-vs-list lesson, must be verified against real
-  output before being trusted, not assumed from the schema alone.
-- [ ] Once confirmed, this converts the flavor-classification layer from
-  `O(N×K)` to true `O(N)`, independent of how many brands get their own
-  flavor classifier. Extend the routed pattern to Coca-Cola and Cappy
-  instead of adding them as further unconditional parallel branches.
+  **Done 2026-08-16**, tested safely via `workflow_specs_run` against an
+  inline modified spec (live workflow never touched).
+- [x] Verify via a real multi-product photo that it routes **per crop
+  within the batch**, not per whole image. **Confirmed — this part works
+  correctly.** Same test photo as the baseline run (60 crops: 8 cappy, 12
+  sprite, 20 coca-cola, 12 fanta, plus a few `unclassified`): `brand_general`
+  ran on the full batch as before, but `brand_fanta` — now gated behind
+  `switch_case` on `extract_general.output == "fanta"` — only produced real
+  output for the 12 crops actually classified `fanta`; all 48 non-Fanta
+  crops came back with a null `fanta_debug` entry, meaning the classifier
+  was not invoked on them. **This is a real, measured reduction: 12/60
+  (20%) invocation rate for the Fanta classifier vs. 60/60 (100%) today.**
+- [ ] **BLOCKER found, not yet fixed (2026-08-16): this insertion breaks
+  correctness for every non-Fanta product.** `merge_brands` (the custom
+  `MergeBrandClasses` block) takes two inputs: `general_classes` (from
+  `extract_general`, unconditional/full batch) and `fanta_classes` (from
+  `extract_fanta`, now downstream of the `switch_case`-gated `brand_fanta`,
+  restricted to only the matched subset). In the live test, `merge_brands`'
+  output (`brand_predictions`) came back **null for all 48 non-Fanta crops**
+  — including cappy/sprite/coca-cola crops whose `general_classes` value was
+  present and correct in `extract_general`'s own output. Only the 12 routed
+  Fanta crops resolved correctly. The execution engine appears to restrict a
+  step's whole batch scope to the narrowest scope of any of its inputs, so
+  merging one gated branch with one ungated branch silently drops the
+  ungated branch's values wherever the gated branch didn't run. **Do not
+  wire this pattern into the live workflow as currently structured** — it
+  would silently null out brand for every non-Fanta detection in production.
+  Needs a real fix (e.g. mirroring `merge_brands`-equivalent logic *inside*
+  each switch-case branch so nothing downstream depends on a mix of gated
+  and ungated inputs, or finding a dedicated branch-merge/"first non-null"
+  block) before this can be extended to Coca-Cola and Cappy. Re-verify live
+  against a real photo again after any fix attempt — do not assume it's
+  correct from the spec alone, per the same lesson that caught this bug.
+- [ ] **Timing: inconclusive from this test, not a fair comparison.** The
+  Switch Case version was run via `workflow_specs_run` (inline, ad-hoc,
+  uncompiled spec) at ~80s wall time, vs. the baseline's ~51s via
+  `workflows_run` on the already-saved/published workflow — slower, but this
+  compares an ad-hoc spec's cold-start/compile overhead against a warm saved
+  workflow, not the routing logic itself, so it says nothing reliable about
+  the real latency effect. The one clean number from this test is the
+  **call-count reduction (60→12 Fanta-classifier invocations, this photo)**,
+  which is the real driver of both cost and latency at scale — once the
+  correctness bug above is fixed, get a proper timing comparison by testing
+  the *saved* draft workflow (still not the live one) so both runs pay the
+  same warm-workflow overhead.
+- [ ] Once fixed and confirmed correct AND cleanly timed, this converts the
+  flavor-classification layer from `O(N×K)` to true `O(N)`, independent of
+  how many brands get their own flavor classifier. Extend the routed pattern
+  to Coca-Cola and Cappy instead of adding them as further unconditional
+  parallel branches.
 - [ ] The packaging-material and size axes are shared/brand-agnostic by
   design and already stay `O(N)` regardless of brand count — they don't
   need this fix, only the per-brand flavor layer does.

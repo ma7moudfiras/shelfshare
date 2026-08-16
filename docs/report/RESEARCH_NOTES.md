@@ -195,3 +195,53 @@ Application" section.
 
 *Log new findings below this line, newest first, with a date and enough
 context to write up later.*
+
+## 2026-08-16 — Switch Case prototype: routing confirmed, but merge logic breaks non-Fanta products
+
+Tested per Phase 3.5 of `ROADMAP_FULL_SKU.md`. Method: built a modified copy
+of the live `test-aystro-detect-classify-brand` spec (fetched live via
+`workflows_get`, not guessed) that inserts `roboflow_core/switch_case@v1`
+between `extract_general` and `brand_fanta`, gating `brand_fanta` to only run
+when `extract_general.output == "fanta"` (case-insensitive). Ran safely via
+`workflow_specs_run` (inline spec, never touched the published/live
+workflow) against the same real 60-crop test photo used for the baseline
+(`https://source.roboflow.com/PoVOAosFgEYd39fWRxjR9DhGE6r2/jN5jiaWBAUmFV624tA7C/original.jpg`).
+
+**What worked**: per-crop routing is real and confirmed live, not assumed.
+`extract_general` classified the full batch (8 cappy, 12 sprite, 20
+coca-cola, 12 fanta, rest unclassified/low-confidence). `brand_fanta`
+(behind the switch case) only produced output for the 12 crops actually
+classified `fanta` by `brand_general` — the other 48 crops' `fanta_debug`
+came back null, meaning the Fanta classifier was not invoked on them. **20%
+invocation rate (12/60) vs. today's 100% (60/60)** — a real, measured
+reduction in wasted classifier calls, exactly the O(N×K) waste identified in
+Phase 3.5's original finding.
+
+**What broke**: `merge_brands` (the `MergeBrandClasses` custom block) takes
+`general_classes` (full batch, from `extract_general`) and `fanta_classes`
+(now restricted-batch, from `extract_fanta` downstream of the gated
+`brand_fanta`). In the live test, `merge_brands`' output was **null for all
+48 non-Fanta crops** — not just for the ones without a Fanta result, but for
+their `general_classes` value too, even though `extract_general` itself had
+the correct cappy/sprite/coca-cola label for every one of them. Only the 12
+routed Fanta crops resolved. Apparent cause: the execution engine scopes a
+step's batch to the narrowest scope among its inputs, so mixing one
+switch-case-gated input with one ungated input silently drops the ungated
+input's values outside the gated scope. **This means the naive
+insert-a-switch-case-and-leave-everything-else-unchanged approach is unsafe
+to ship** — it would null out brand for every non-Fanta detection in
+production. A real fix (duplicate the merge logic inside each branch, or
+find a proper branch-merge block) is needed before extending this to
+Coca-Cola/Cappy. Not yet attempted.
+
+**Timing**: not cleanly measurable from this test. The baseline used
+`workflows_run` against the already-saved/published workflow (~51.4s,
+warm). The switch-case version used `workflow_specs_run` against an ad-hoc
+inline spec (~80.1s) — slower, but that most likely reflects one-off
+compile/cold-start overhead for an unsaved spec, not the routing logic
+itself, so it is **not a fair comparison** and should not be quoted as "how
+much time Switch Case costs or saves." The one reliable number from this
+test is the call-count reduction above (60→12 invocations of the Fanta
+classifier for this photo) — that is the real, defensible efficiency gain,
+and it is what should be cited if asked "does this help," not wall-clock
+time from this particular test.
