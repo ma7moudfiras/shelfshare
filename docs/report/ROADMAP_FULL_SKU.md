@@ -53,13 +53,20 @@ the report, and `CLAUDE.md` for Roboflow project-naming conventions.
   method as the Coca-Cola/XL Energy audits) before deciding whether to
   build classifiers for them.
 - [x] XL Energy: audited, confirmed real variant diversity (unlike
-  Coca-Cola) — 5 classes (`xl-classic` 247, `xl-red` 20, `xl-sugarfree` 12,
-  `xl-mojito` 6, `xl-doublekick` 6; heavily imbalanced toward classic).
-  Labeled, split fixed proactively before version generation (unlike the
-  packaging classifier's post-hoc fix), and trained 2026-08-17
-  (`test-aystro-xlenergy-classifier` v1, `vit-base-patch16-224-in21k`,
-  `metrics: null` — same plan-tier gap as every other classifier here). Not
-  yet wired into the live Workflow. See RESEARCH_NOTES.md.
+  Coca-Cola) — 6 classes as of the final label set (`xl-classic`,
+  `xl-red`/`xl-maxenergy`, `xl-mojito`, `xl-sugarfree`/`xl-strawberry`,
+  `xl-doublekick`, `xl-sportsmaniac` — class list changed once mid-session,
+  see RESEARCH_NOTES.md; check `projects_get` for the live set before
+  assuming this list is still current). Labeled, split fixed proactively
+  before version generation (unlike the packaging classifier's post-hoc
+  fix), trained 2026-08-17 (`aystro-xl-classifier` v1,
+  `vit-base-patch16-224-in21k`, `metrics: null` — same plan-tier gap as
+  every other classifier here), retrained same day after a project rename
+  orphaned the first model from serving (see RESEARCH_NOTES.md), and
+  **wired into the live Workflow** (`aystro-detect-classify`) via the same
+  `switch_case` + `first_non_empty_or_default` pattern used for Fanta —
+  verified live via `workflows_run` against a real photo. Phase 3.5's
+  routed-classifier pattern is now proven for two brands, not just one.
 - [x] ~~Coca-Cola flavor diversity~~ re-audited 2026-08-17 (user asked to
   reconsider deleting/restarting `test-aystro-coca-classifier`) — same
   conclusion as before, now independently re-verified: ~286/301 classic,
@@ -210,12 +217,19 @@ the platform (schema inspected), not assumed.
   live immediately after via `workflows_run` against the same test photo:
   output identical to the pre-change baseline (same 60 brand/flavor labels),
   confirming the fix is live and correct, not just validated in a copy.
-  Phase 3.5 is done for Fanta. Next: extend the same `switch_case` +
-  `first_non_empty_or_default` pattern to Coca-Cola and Cappy once those
-  flavor classifiers exist (Phase 1 for Cappy is still pending; Coca-Cola's
-  classifier project exists but is waiting on real flavor-diverse data per
-  Phase 2). The scratch timing workflow (`Test - switch-case-fanta-timing`,
-  id `wcAqN3tElm50N91hhxWg`) is no longer needed and can be deleted.
+  Phase 3.5 is done for Fanta. The scratch timing workflow
+  (`Test - switch-case-fanta-timing`, id `wcAqN3tElm50N91hhxWg`) is no
+  longer needed and can be deleted.
+- [x] **Extended to XL Energy, 2026-08-17.** Same pattern: `route_xlenergy`
+  (`switch_case` on `extract_general.output == "xl_energy"`) gates
+  `brand_xlenergy`, merged via a 3-way `first_non_empty_or_default`
+  (`[extract_fanta, extract_xlenergy, extract_general]`, most-specific
+  first). Verified live via `workflows_run` against the same real test
+  photo — output identical to the pre-change baseline for every non-XL
+  crop, confirming the second branch didn't disturb the first. Still open:
+  Coca-Cola and Cappy once those flavor classifiers exist (Phase 1 for
+  Cappy is still pending; Coca-Cola's classifier project exists but is
+  waiting on real flavor-diverse data per Phase 2).
 - [ ] The packaging-material and size axes are shared/brand-agnostic by
   design and already stay `O(N)` regardless of brand count — they don't
   need this fix, only the per-brand flavor layer does.

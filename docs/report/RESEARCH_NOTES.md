@@ -584,3 +584,39 @@ with a real inference call, config inspection alone is not sufficient.**
 problem but isn't wired into any live Workflow, so it wasn't retrained this
 session (no urgency) — flagging so a future session doesn't assume it's
 servable just because `versions_get` shows it finished.
+
+**Resolution, same session**: retrained both `aystro-fanta-classifier` v4
+(training id `dfe246d0f68fbfccf8d1`) and `aystro-xl-classifier` v1 (training
+id `58e5d17329d666cdd779`) — new model ids correctly bake in the current
+project names (`aystro-fanta-classifier-4-...`, `aystro-xl-classifier-1-...`),
+confirming the fix. Also discovered mid-fix that `workflows_get` reporting
+the "right" saved config is *not* sufficient evidence a fix works — this
+investigation hit two more layers of surprise on top of the orphaned-model
+bug itself: (1) `workflows_run` lagged behind `workflows_update` by roughly
+one edit cycle before reflecting a change, and (2) the `roboflow_classification_model@v3`
+step strictly requires `project_id/version_number` as `model_id` — it
+rejects a bare (but otherwise valid and `models_get`-resolvable) model name,
+so referencing an orphaned model by its raw generated name is not a usable
+workaround, only retraining is. Re-pointed the live workflow's `brand_fanta`
+step back to the clean `aystro-fanta-classifier/4` alias post-retrain, added
+XL Energy as a second `switch_case` branch (`route_xlenergy` /
+`brand_xlenergy` / `extract_xlenergy`, model `aystro-xl-classifier/1`,
+folded into `merge_brands`'s priority list as
+`[extract_fanta, extract_xlenergy, extract_general]`), and verified the
+whole thing live via `workflows_run` against the same 60-crop test photo
+used throughout this engagement — output byte-identical to the established
+baseline for every cappy/sprite/coca-cola/fanta crop (this particular photo
+has no XL Energy products, so that branch wasn't exercised by this specific
+run, but didn't disturb anything else either). Phase 3.5's routed-classifier
+pattern is now live for two brands.
+
+Also answered a live architecture question from the user during this fix:
+they were reading the workflow's data-flow edges (`crop` → `brand_fanta`,
+`crop` → `brand_xlenergy`, wiring image *availability*) as evidence both
+classifiers run unconditionally in parallel with `brand_general`. They
+don't — `switch_case` gates actual *execution* separately from the data
+edges, and this was already independently confirmed in the 2026-08-16
+entries above (12/60 crops actually invoked the Fanta classifier, not
+60/60). Worth remembering for anyone reading the workflow JSON cold: an
+`images` edge into a classifier step means "this step could reach that
+data if invoked," not "this step runs on every crop."
