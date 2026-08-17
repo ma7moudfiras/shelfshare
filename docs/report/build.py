@@ -292,6 +292,9 @@ class Builder:
                 elif kind == "table":
                     self.table(block[1], block[2], block[3], meta)
 
+        if not references:
+            return self.doc
+
         self.page_break()
         self.heading(meta["refs_h"], 1)
         for i, ref in enumerate(references, 1):

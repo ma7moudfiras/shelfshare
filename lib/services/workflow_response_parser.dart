@@ -106,6 +106,7 @@ class WorkflowResponseParser {
     }
 
     detections = _withDetectorConfidence(detections, outputs);
+    detections = _withPackaging(detections, outputs);
 
     return DetectionResult(
       detections: detections,
@@ -197,10 +198,22 @@ class WorkflowResponseParser {
     return detections.isEmpty ? null : detections;
   }
 
+  /// Class name substituted when the workflow reports a detection but the
+  /// classifier stage returned a blank label for it (a real, occasional
+  /// classifier quirk -- not a malformed entry).
+  static const _blankClassFallback = 'unclassified';
+
   /// Reads one detection, ignoring every field the UI does not use.
   ///
   /// Segmentation `points` in particular are dropped here and never retained --
   /// polygon arrays dwarf the rest of the payload.
+  ///
+  /// A blank class name is substituted with [_blankClassFallback] rather than
+  /// dropping the detection: dropping it would shrink this output relative to
+  /// `raw_detections`, and [_withDetectorConfidence] silently declines to
+  /// blend confidence at all when the two lists' lengths disagree -- so one
+  /// blank-labelled crop would otherwise flatten every confidence on the
+  /// photo back to the classifier's raw (near-100%) value.
   Detection? _readDetection(Map<String, dynamic> map) {
     final x = _toDouble(map['x']);
     final y = _toDouble(map['y']);
@@ -211,9 +224,11 @@ class WorkflowResponseParser {
     // not a bounding box.
     if (x == null || y == null || width == null || height == null) return null;
 
-    final className = (map['class'] ?? map['class_name'] ?? map['label'])
+    final rawClassName = (map['class'] ?? map['class_name'] ?? map['label'])
         ?.toString();
-    if (className == null || className.isEmpty) return null;
+    final className = (rawClassName == null || rawClassName.isEmpty)
+        ? _blankClassFallback
+        : rawClassName;
 
     return Detection(
       className: className,
@@ -268,6 +283,43 @@ class WorkflowResponseParser {
           detections[i].confidence * raw.detections[i].confidence,
         ),
     ];
+  }
+
+  /// Key of the workflow output holding the independent packaging-material
+  /// classifier's labels -- `$steps.extract_packaging.output` in the workflow
+  /// spec. A bare list of strings (`can`/`plastic`/`glass`), one per crop, in
+  /// the same order as `raw_detections` and the main `predictions` list --
+  /// all three trace back to the same `crop.crops` ordering.
+  static const _packagingPredictionsKey = 'packaging_predictions';
+
+  /// Merges the packaging-material signal onto each detection, so the app's
+  /// result actually carries what the workflow's separate packaging branch
+  /// found rather than leaving it stranded in its own output field.
+  ///
+  /// A no-op when [outputs] carries no packaging output (older workflow
+  /// versions) or its length doesn't match [detections], for the same reason
+  /// [_withDetectorConfidence] declines on a mismatch: silently doing nothing
+  /// beats misattributing one crop's material to another's box.
+  List<Detection> _withPackaging(
+    List<Detection> detections,
+    Map<String, dynamic> outputs,
+  ) {
+    if (detections.isEmpty || !outputs.containsKey(_packagingPredictionsKey)) {
+      return detections;
+    }
+
+    final raw = outputs[_packagingPredictionsKey];
+    if (raw is! List || raw.length != detections.length) return detections;
+
+    return [
+      for (var i = 0; i < detections.length; i++)
+        detections[i].withPackaging(_asNonEmptyString(raw[i])),
+    ];
+  }
+
+  static String? _asNonEmptyString(Object? value) {
+    final s = value?.toString();
+    return (s == null || s.isEmpty) ? null : s;
   }
 
   /// Extracts an annotated image from an output, if it is image-shaped.

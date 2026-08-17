@@ -22,12 +22,18 @@ class Detection {
   /// Tracker id, when the workflow includes a tracking block.
   final int? trackerId;
 
+  /// Packaging material (`can`, `plastic`, or `glass`), when the workflow's
+  /// independent packaging classifier produced one for this detection. Null
+  /// for older workflow versions that don't carry this signal.
+  final String? packaging;
+
   const Detection({
     required this.className,
     required this.confidence,
     required this.box,
     this.classId,
     this.trackerId,
+    this.packaging,
   });
 
   /// A copy carrying [className] instead, with the box and scores untouched.
@@ -40,6 +46,7 @@ class Detection {
     box: box,
     classId: classId,
     trackerId: trackerId,
+    packaging: packaging,
   );
 
   /// A copy carrying [confidence] instead, with everything else untouched.
@@ -49,13 +56,27 @@ class Detection {
     box: box,
     classId: classId,
     trackerId: trackerId,
+    packaging: packaging,
+  );
+
+  /// A copy carrying [packaging] instead, with everything else untouched.
+  Detection withPackaging(String? packaging) => Detection(
+    className: className,
+    confidence: confidence,
+    box: box,
+    classId: classId,
+    trackerId: trackerId,
+    packaging: packaging,
   );
 
   /// Confidence rendered for display, e.g. `87%`.
   String get confidenceLabel => '${(confidence * 100).round()}%';
 
-  /// Label as drawn on the overlay, e.g. `coca_cola 87%`.
-  String get displayLabel => '$className $confidenceLabel';
+  /// Label as drawn on the overlay, e.g. `coca_cola 87%`, or
+  /// `coca_cola · can 87%` once packaging has been merged in.
+  String get displayLabel => packaging == null
+      ? '$className $confidenceLabel'
+      : '$className · $packaging $confidenceLabel';
 
   @override
   String toString() => 'Detection($className, $confidenceLabel, $box)';
