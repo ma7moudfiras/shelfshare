@@ -107,7 +107,14 @@ class _ShelfMonitorAppState extends State<ShelfMonitorApp> {
     super.initState();
     // Built only when an API key is present; the capture screen falls back to
     // capture-only behaviour when this is null.
-    if (AppConfig.isConfigured) _detectionService = RoboflowService();
+    //
+    // `shapeRule: null` suspends CanShapeRule's slim/standard relabeling --
+    // its aspect-ratio heuristic isn't accurate enough yet. The rule, its
+    // tests, and RoboflowService's own default all stay untouched; this is
+    // the one call site to revert (drop this argument) once it's ready.
+    if (AppConfig.isConfigured) {
+      _detectionService = RoboflowService(shapeRule: null);
+    }
     _attachAuthService();
   }
 

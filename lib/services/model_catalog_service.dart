@@ -107,6 +107,11 @@ class ModelCatalogService {
 
       final classes = (project['classes'] as Map).keys
           .map((k) => k.toString())
+          // `project['classes']` is every tag ever applied to any image,
+          // including one-off data-hygiene flags like `review-not-coca-cola`
+          // (never a real predictable class) -- not what a live model can
+          // actually predict, so those don't belong in a product filter.
+          .where((name) => !name.startsWith('review-'))
           .toList();
       classes.sort();
       return classes;

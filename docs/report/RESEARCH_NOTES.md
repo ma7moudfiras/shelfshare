@@ -1,0 +1,400 @@
+# Research Notes — Inputs for the Next Report Revision
+
+Working notes accumulated after the original Field Training Report
+(`content_en.py` / `content_ar.py`) was written. Purpose: durable storage for
+anything worth folding into a report/paper revision, so nothing is lost when
+this conversation's context is summarized or ends. Not polished prose — raw
+findings, numbers, and decisions, dated, to be written up properly later.
+
+Update this file whenever a new report-relevant finding, number, or decision
+comes up. Keep entries factual and sourced (which Roboflow project/version/
+training id, which commit) so they can be verified again later.
+
+---
+
+## 1. Corrected architecture comparison: brand-classed vs. class-agnostic detector
+
+**Do not use `aystro-project` v1/v2 for this comparison** — those are tiny
+early iterations (27 and 49 images) from the first day of the project.
+`aystro-project` actually has **20 versions**; v20 (1191 images, trained
+2026-08-10) is the mature, representative state of the original brand-classed
+approach, and — importantly — uses the same `rfdetr-large` architecture as
+the current production detector, making it the fair comparison point.
+
+| | `aystro-project` v20 (brand-classed, 6 classes) | `aystro-project-v2` v2 (class-agnostic, "product") |
+|---|---|---|
+| Images | 1191 | 384 (augmented; 226 raw images in the project) |
+| Architecture | rfdetr-large | rfdetr-large |
+| mAP50 | 86.92% | **89.3%** |
+| Precision | 82.7% | **90.5%** |
+| Recall | **85.8%** | 81.1% |
+| Training | `f740b2bbd9a2408bb723`, finished 2026-08-10 | `1dd65f92c4474729e244`, finished 2026-08-11 |
+
+**Honest framing**: the class-agnostic architecture reaches higher mAP50 and
+precision with roughly **a third of the training data** — a real
+data-efficiency argument. Recall is slightly *lower* (81.1% vs 85.8%),
+which should not be hidden. Likely explanation: `aystro-project-v2` (the
+class-agnostic project) currently holds only 226-227 raw images total, while
+the original `aystro-project` had grown to 1191 annotated images by v20 —
+**roughly 800 already-annotated images were never migrated/relabeled into the
+class-agnostic project.** This is a concrete, actionable follow-up: migrating
+the remaining images would very plausibly close or reverse the recall gap,
+and is cheap (programmatic relabel to a single "product" class, no new
+annotation work) compared to collecting new imagery.
+
+For context, also on record (both brand-classed, both superseded, kept for
+the historical progression narrative only — not the comparison to lead with):
+- `aystro-project` v1 (27 images, rfdetr-small): mAP50 77.95%, precision
+  96.2%, recall 73.5%.
+- `aystro-project` v2 (49 images, rfdetr-small): mAP50 57.78%, precision 80%,
+  recall 50% — *worse* than v1 despite more data, an early real illustration
+  of the per-class data starvation problem the report argues from statistics
+  alone.
+
+## 2. Classifier accuracy — not yet measured, real gap
+
+Roboflow recorded no `metrics` (null) on the finished classification
+trainings for either `aystro-brand-classifier` v1 (Stage 2, brand) or
+`test-aystro-brand-classifier` v4 (Stage 3, Fanta flavor) — `model_evals_list`
+returns empty for both, workspace-wide and project-scoped. Detection training
+runs populate `map50`/`precision`/`recall` automatically; classification runs
+apparently need an explicit "Evaluate" step that hasn't been run yet (either
+via the Roboflow UI or an MCP eval-trigger path not yet identified).
+
+**Action needed before the report can state classifier accuracy**: run that
+evaluation for both classifiers (and later the packaging-material classifier
+once trained). Do not state a classifier accuracy number in the report until
+this is done — there is currently no real number to cite.
+
+## 3. Training / compute cost ("hardware cost") — real numbers, from Roboflow's own rate card
+
+Rate (roboflow.com/credits, confirmed via the `plans-and-pricing` skill,
+not guessed): **1 credit = 30 minutes of GPU training**. Computed from actual
+training start/end timestamps:
+
+| Model | Training time | Credits |
+|---|---|---|
+| `aystro-project` v1 (original, first-ever model) | 11.2 min | 0.37 |
+| `aystro-project` v2 | 10.2 min | 0.34 |
+| `aystro-project-v2` v2 (current production detector) | 44.2 min | 1.48 |
+| `aystro-brand-classifier` v1 (Stage 2) | 9.1 min | 0.30 |
+| `test-aystro-brand-classifier` v4 (Stage 3, Fanta) | 7.2 min | 0.24 |
+
+Current active 3-model production stack (detector + brand classifier + Fanta
+flavor classifier): **~2.0 credits (~60 minutes) total training cost**, ever.
+All-time total across every training run including obsolete iterations: ~2.7
+credits (~82 minutes). Both are a small fraction of even the cheapest paid
+plan's monthly allowance (Core: 50 credits/month) — **the multi-layer
+architecture has not introduced a meaningful training/compute cost increase**
+over the original single-model approach, while accuracy improved
+substantially. Do not state a dollar figure — Roboflow's own guidance is to
+always point to `roboflow.com/pricing` / `app.roboflow.com/{workspace}/settings/usage`
+for current dollar pricing rather than guess.
+
+**Ongoing inference cost — flagged but not yet measured**: the current
+pipeline runs 1 detection call + up to 2 classification calls *per detected
+product*, not per photo (a photo with 20 products triggers up to 40
+classification calls it previously didn't). This is a real scaling-cost
+consideration for the investor-facing framing and should be measured (actual
+credit consumption per live workflow run) before being stated quantitatively.
+
+## 4. Marginal cost of scaling — qualitative, evidence-backed from this project's own history
+
+- **New company/tenant**: zero code/model change. The Supabase schema is
+  multi-tenant by design (`company_id` + RLS on every table) — adding a
+  company is a data operation, not an engineering one.
+- **New SKU/flavor within an existing brand**: demonstrated directly by the
+  Fanta flavor classifier build (Stage 3) — no detector or Stage-2
+  brand-classifier retraining required; just label a few hundred existing
+  crops by flavor and train one small classifier, wired in as a parallel
+  workflow step. Took hours, not weeks.
+- **New packaging type**: the packaging-material experiment (glass/plastic/can,
+  in progress — see §5) is built as ONE shared classifier across all brands,
+  specifically because material is brand-independent — a new brand
+  automatically benefits from the existing packaging classifier with no
+  retraining.
+- **Entirely new product category**: the class-agnostic Stage-1 detector
+  would still find it (generic "product" detection), but a new classifier
+  would be needed to identify it specifically.
+
+## 5. Packaging-material classifier experiment (glass/plastic/can) — in progress
+
+New signal, not present in the original report at all (the report only ever
+covered packaging *format* via box-aspect-ratio geometry, never packaging
+*material* via a trained classifier).
+
+- Visual audit of all ~1608 existing brand-classifier crops (contact-sheet
+  method, sorted by aspect ratio per brand) found **only 2 genuine glass
+  examples** (both Coca-Cola) out of 1608 — far too few to be a trainable
+  class. **Decision: shipped as a 2-class experiment (plastic vs. can)**,
+  the 2 glass images set aside, not force-labeled into either bucket.
+- Final label distribution: 860 plastic / 746 can (1606 total) — reasonably
+  balanced.
+- New project: `test-aystro-packaging-classifier`. Upload done (1606 images).
+  The full `{image_id: label}` map from the visual audit is committed at
+  `docs/report/packaging_material_labels.json` (1606 entries, 860 plastic /
+  746 can) so it survives session resets and is available to any session
+  working on this repo, not just the one that produced it. Labeling
+  (writing these via `annotations_save`) is now complete — see the
+  "Packaging-material labeling finished" entry below for final counts and
+  the handful of images that needed manual follow-up. Not yet trained or
+  evaluated.
+- Per-brand material observations from the audit (useful color for the
+  report's discussion of packaging diversity): Cappy is uniformly plastic;
+  XL Energy is uniformly can; Sprite and Pepsi split cleanly into a
+  low-aspect-ratio plastic-bottle cluster and a high-aspect-ratio can cluster;
+  Fanta and Coca-Cola have messier, less clean-cut plastic/can boundaries in
+  the aspect-ratio sort (more manual judgment calls needed there).
+
+## 6. Real engineering incidents since the original report — worth citing as evidence of rigor
+
+- **Production bug found and fixed**: a custom Roboflow Workflow Python block
+  (`MergeBrandClasses`) called `list(some_string)` on what turned out to be a
+  per-crop *scalar* string (not a list), silently exploding class names into
+  individual characters — the live app displayed single letters ("c", "f",
+  "s") instead of full class names. Diagnosed from a user-supplied screenshot,
+  root-caused, fixed, and verified live against a real shelf photo within the
+  same session. A concrete illustration of "verify against real data, not
+  just training-time metrics" — the training metrics for that pipeline were
+  fine; the bug was purely in a downstream data-merging step no offline
+  evaluation would have caught.
+- **Geometric packaging-format rule (`CanShapeRule`, the aspect-ratio
+  slim/standard heuristic central to Sections 6-7 of the original report)
+  proved unreliable enough in practice that it has been suspended in
+  production** (as of this session) pending a more accurate approach — the
+  code, tests, and class are intentionally left intact for later refinement,
+  not deleted. This is a direct, honest update to the original report's
+  framing of that rule as a validated, resolved solution: it worked on the
+  specific measured example in Section 6, but did not generalize reliably
+  enough for production use. Worth stating plainly in the revision rather
+  than quietly dropping.
+- **Data-quality findings from direct audit, more granular than the
+  original report's aggregate "42.1% flagged difficult" statistic**:
+  - One image mislabeled as `coca-cola` was actually a different, unrelated
+    product ("Chat Cola") — no direct per-image delete API existed on the
+    platform, so it was relabeled to a flagged tag `review-not-coca-cola`
+    as a workaround. This tag then leaked into the app's product filter UI
+    (it read every tag ever applied to any project image, not just real
+    predictable classes) and has since been fixed with a client/server-side
+    filter (`review-` prefix excluded).
+  - Fanta flavor data is real but imbalanced: fanta-orange 212, fanta-grape
+    27, fanta-redapple 60 (out of ~300) — grape is thin.
+  - Coca-Cola flavor data, on direct visual audit, turned out to be almost
+    entirely homogeneous "classic" — essentially no real flavor diversity
+    (Zero/Diet/etc.) currently exists in the captured data, so the
+    Coca-Cola flavor classifier project was seeded but left as a single
+    class pending genuinely diverse new photos, rather than forcing a
+    flavor split the data doesn't support.
+
+## 7. App scope has grown well beyond the original report's Section 10 description
+
+Since the report was written: a Submissions history section and a
+brand → variant Share-of-Shelf percentage report were added to the Market
+Detail admin screen (previously captured data was written to Supabase but
+never read back anywhere in the app); a "shot from too far away" capture
+warning was upgraded from an easy-to-miss SnackBar to a blocking popup
+dialog. These are real, shipped deliverables beyond what Section 10
+describes and should be reflected in an updated "Field Data Collection
+Application" section.
+
+---
+
+*Log new findings below this line, newest first, with a date and enough
+context to write up later.*
+
+## 2026-08-16 (later) — Bulk-write permission prompts: root cause found
+
+Resuming the packaging-material labeling (~1470 remaining `annotations_save`
+calls) kept prompting for approval on every single call, even inside a
+background-delegated Agent, even though `.claude/settings.local.json`
+already had `mcp__Roboflow__annotations_save` explicitly allow-listed
+(added 2026-08-11 for this exact reason) and a Roboflow connector-level
+"always allow" had also been granted. Neither fixed it in the *existing*
+session. Root cause, confirmed by direct test: **permission grants are read
+once when a session starts** — a session already running when a grant is
+added never picks it up, no matter how the grant was made (settings file or
+connector-level). Fix: open a genuinely new session (not just a new message
+in the same conversation) — confirmed via a single test `annotations_save`
+call that ran silently with no prompt in a fresh session. Lesson for any
+future bulk-write task: if permission prompting appears despite an
+already-granted rule, suspect a stale session first, not the rule itself.
+Because scratch-space files (`/tmp/.../scratchpad/`) are session-scoped and
+not visible to a different session, the packaging-material label map was
+moved into the repo itself (`docs/report/packaging_material_labels.json`)
+so a fresh session can pick up the bulk-labeling task without redoing the
+visual audit.
+
+**Editorial follow-up (2026-08-16, next session):** don't read the above as
+"a new session bypasses permission review, so use that when prompting is
+inconvenient." Whatever caused prompting to stop in a fresh session, that's
+not something to lean on for skipping human review of large/irreversible
+writes — the fresh session that picked this task back up still confirmed
+directly with the user before running the ~1,463-image bulk write, rather
+than treating this note as standing authorization. Keeping the note for the
+factual record (the stale-grant behavior is real and worth knowing about
+technically), not as a recommended way to avoid checkpoints.
+
+## 2026-08-16 (later same day) — Switch Case merge bug: fixed
+
+Follow-up to the entry below. Tried two fixes for the "non-Fanta crops come
+back null" bug before finding the real one:
+
+1. Made `merge_brands` (the custom `MergeBrandClasses` Python block) a
+   `default_next_steps` target of the `switch_case`, in addition to being
+   reachable via the Fanta branch — hypothesis was this would make the
+   engine treat it as a proper reconvergence point. **Made it worse**:
+   every crop came back null, including the Fanta ones.
+2. **The actual fix**: stopped using a custom Python block to merge branches
+   at all. Roboflow ships `roboflow_core/first_non_empty_or_default@v1`
+   ("First Non Empty Or Default"), built specifically for "merging
+   alternative execution branches" post-conditional-routing. Replaced
+   `merge_brands` with a call to that block:
+   `data: ["$steps.extract_fanta.output", "$steps.extract_general.output"]`,
+   `default: "unclassified"` — picks the Fanta flavor if present, else the
+   general brand, else `"unclassified"`.
+
+Re-ran live against the same 60-crop test photo. **Every crop resolved
+correctly**: cappy (8), sprite (12), coca-cola (20) crops kept their plain
+brand label with confidence 1 (previously these were coming back
+`unclassified`/confidence 0 in the broken versions); the 12 Fanta crops
+resolved to their flavor (11 `fanta-orange`, 1 `fanta-redapple`) — an exact
+match to the original unconditional baseline's brand assignments, with the
+Fanta classifier now invoked on only 12/60 crops instead of 60/60.
+
+**Lesson for extending to Coca-Cola/Cappy**: don't write a custom Python
+block to merge conditional branches — use `first_non_empty_or_default@v1`,
+ordered most-specific-first (e.g. `[coca_cola_flavor, cappy_flavor,
+fanta_flavor, general_brand]`, though actual per-brand routing needs its
+own switch_case per brand once those classifiers exist). Custom blocks that
+mix an input from *before* a switch_case with an input from *after* a gated
+branch appear to break silently (null, not an error) — this is a real
+platform behavior worth remembering, not just a one-off bug in this
+specific block.
+
+**Timing, done properly right after**: saved the fixed spec as its own
+workflow (`Test - switch-case-fanta-timing`, id `wcAqN3tElm50N91hhxWg`,
+separate from the live one) so both sides of the comparison could run
+through `workflows_run` on a saved/warm workflow — the same call path,
+removing the earlier ad-hoc-spec confound. Ran back-to-back against the
+same 60-crop test photo: **baseline (live, unconditional) 40.32s → Switch
+Case 14.20s — 65% faster, 26.1s saved**, with byte-for-byte identical
+`brand_predictions` in both runs. This is a real measurement, not an
+estimate. (Note: this baseline reading, 40.32s, differs from the very first
+baseline reading earlier the same day, ~51.4s — normal run-to-run variance
+on shared serverless infra; the 40.32s/14.20s pair is the one to cite since
+both were measured back-to-back under identical conditions.)
+
+**Applied to production, same day**: after the clean timing result, the user
+said to apply it. Ran `workflows_update` on the live
+`test-aystro-detect-classify-brand` workflow with the fixed spec (Switch
+Case + `first_non_empty_or_default`, custom `MergeBrandClasses` block
+removed). Re-ran `workflows_run` against the live workflow immediately
+after to confirm — output identical to the original baseline (same 60
+brand/flavor labels, byte-for-byte). The live workflow is now the fast,
+correct version. Still open: extending the same pattern to Coca-Cola and
+Cappy once those flavor classifiers exist, and deleting the now-unneeded
+scratch timing workflow (`Test - switch-case-fanta-timing`, id
+`wcAqN3tElm50N91hhxWg`).
+
+## 2026-08-16 — Switch Case prototype: routing confirmed, but merge logic breaks non-Fanta products
+
+Tested per Phase 3.5 of `ROADMAP_FULL_SKU.md`. Method: built a modified copy
+of the live `test-aystro-detect-classify-brand` spec (fetched live via
+`workflows_get`, not guessed) that inserts `roboflow_core/switch_case@v1`
+between `extract_general` and `brand_fanta`, gating `brand_fanta` to only run
+when `extract_general.output == "fanta"` (case-insensitive). Ran safely via
+`workflow_specs_run` (inline spec, never touched the published/live
+workflow) against the same real 60-crop test photo used for the baseline
+(`https://source.roboflow.com/PoVOAosFgEYd39fWRxjR9DhGE6r2/jN5jiaWBAUmFV624tA7C/original.jpg`).
+
+**What worked**: per-crop routing is real and confirmed live, not assumed.
+`extract_general` classified the full batch (8 cappy, 12 sprite, 20
+coca-cola, 12 fanta, rest unclassified/low-confidence). `brand_fanta`
+(behind the switch case) only produced output for the 12 crops actually
+classified `fanta` by `brand_general` — the other 48 crops' `fanta_debug`
+came back null, meaning the Fanta classifier was not invoked on them. **20%
+invocation rate (12/60) vs. today's 100% (60/60)** — a real, measured
+reduction in wasted classifier calls, exactly the O(N×K) waste identified in
+Phase 3.5's original finding.
+
+**What broke**: `merge_brands` (the `MergeBrandClasses` custom block) takes
+`general_classes` (full batch, from `extract_general`) and `fanta_classes`
+(now restricted-batch, from `extract_fanta` downstream of the gated
+`brand_fanta`). In the live test, `merge_brands`' output was **null for all
+48 non-Fanta crops** — not just for the ones without a Fanta result, but for
+their `general_classes` value too, even though `extract_general` itself had
+the correct cappy/sprite/coca-cola label for every one of them. Only the 12
+routed Fanta crops resolved. Apparent cause: the execution engine scopes a
+step's batch to the narrowest scope among its inputs, so mixing one
+switch-case-gated input with one ungated input silently drops the ungated
+input's values outside the gated scope. **This means the naive
+insert-a-switch-case-and-leave-everything-else-unchanged approach is unsafe
+to ship** — it would null out brand for every non-Fanta detection in
+production. A real fix (duplicate the merge logic inside each branch, or
+find a proper branch-merge block) is needed before extending this to
+Coca-Cola/Cappy. Not yet attempted.
+
+**Timing**: not cleanly measurable from this test. The baseline used
+`workflows_run` against the already-saved/published workflow (~51.4s,
+warm). The switch-case version used `workflow_specs_run` against an ad-hoc
+inline spec (~80.1s) — slower, but that most likely reflects one-off
+compile/cold-start overhead for an unsaved spec, not the routing logic
+itself, so it is **not a fair comparison** and should not be quoted as "how
+much time Switch Case costs or saves." The one reliable number from this
+test is the call-count reduction above (60→12 invocations of the Fanta
+classifier for this photo) — that is the real, defensible efficiency gain,
+and it is what should be cited if asked "does this help," not wall-clock
+time from this particular test.
+
+## 2026-08-16 (next session) — Packaging-material labeling finished: 1,603/1,606
+
+Resumed from `docs/report/packaging_material_labels.json` (the 1,606-entry
+plastic/can audit map committed in the previous session). 143 images were
+already labeled and in the dataset from before; the remaining 1,463 were
+delegated to 3 background agents in parallel (per the established
+contact-sheet/background-agent pattern), each working a disjoint ~488-image
+chunk via `annotations_save`.
+
+**Glass class preserved, not overwritten.** Mid-run, the user asked to keep
+the project's existing `glass` class rather than force those images into
+plastic/can per the map. At that point 22 images were already tagged
+`glass` in the live project (pre-dating this session — leftover from before
+the plastic/can-only decision documented in §5, not part of that decision).
+21 of the 22 fell inside the "remaining" set the agents were processing (1
+was already in-dataset and untouched). By the time the correction reached
+all three agents, 14 had already been overwritten to plastic/can — these
+were identified (cross-referencing live `images_search` against the map)
+and restored to `glass` directly. The other 7 were correctly skipped by the
+agents once instructed. All 22 were also confirmed added to the trainable
+dataset (7 of them had a `glass` annotation from before this session but had
+never actually been added to the dataset — fixed as part of this cleanup).
+Final check: `images_search(class_name=glass, in_dataset=true)` → exactly
+22/22, matching the original set with no drift.
+
+**Session-limit interruption.** All 3 agents hit "You've hit your session
+limit" partway through (a real platform limit, not a permission issue) and
+had to be resumed via `SendMessage` with the skip-list attached — worth
+knowing for future bulk-write tasks of this size: budget for at least one
+resume cycle.
+
+**Final result:**
+- In-dataset total: 1,603 images (1,606 map entries − 3 permanent failures)
+- `plastic`: 844, `can`: 737, `glass`: 22 (live `images_search` counts, not
+  the project-summary `classes` stat, which was observed to be stale/out of
+  sync with real-time queries throughout this session and should not be
+  trusted for reporting — verify with `images_search` directly)
+- 3 permanent failures after repeated retries (Roboflow-side `"Unknown
+  error"`, 4 attempts each across the resumed agents and a direct retry):
+  `DrT1Tw6tquGduF9EAwR2`, `BYukrThCYMyENKQtkvp4`, `P4uKKPqqotvCTgyIjli4` —
+  all three were supposed to be `can` per the map. Worth one more retry in
+  a later session or a look at whether these image records are corrupted.
+- Minor, unexplained ~5-image skew between the map's expected plastic/can
+  split (839/745, after removing the 21 glass overrides) and the actual
+  live counts (844/737) — total accounts for exactly (1,606 − 22 glass − 3
+  failures = 1,581 map-driven labels + 22 glass = 1,603, which matches), so
+  no images are missing or double-counted, but a handful of the *original*
+  143 (labeled in an earlier session, before this map existed) likely carry
+  a label that doesn't match this map's judgment for the same image. Not
+  investigated further; flagging for anyone training on this data.
+- Not yet trained or evaluated — this only completes the labeling step from
+  §5.
