@@ -620,3 +620,82 @@ entries above (12/60 crops actually invoked the Fanta classifier, not
 60/60). Worth remembering for anyone reading the workflow JSON cold: an
 `images` edge into a classifier step means "this step could reach that
 data if invoked," not "this step runs on every crop."
+
+## 2026-08-17 (evening) — Sprite-can training-data gap found, root-caused, and fixed
+
+User reported (with two real phone screenshots from a live production capture,
+not a lab test) that Sprite cans specifically were sometimes missed entirely
+and sometimes classified at confidence as low as ~20%, and that this had been
+happening for at least 3 days, not something introduced by that day's fixes.
+Coca-Cola-variant and packaging-type questions came up in the same message —
+see the two entries below for those.
+
+**Root cause, confirmed visually, not assumed.** Downloaded and
+aspect-ratio-sorted a 138-image sample of `aystro-brand-classifier`'s
+`sprite` class (same contact-sheet method used throughout this engagement).
+Only ~10-15 of 138 (~10%) were genuine cans; the rest were PET bottles. The
+classifier had seen roughly 9x more bottle examples than can examples for
+the same brand, which plausibly explains both symptoms the user reported
+(missed detections and low-confidence hits) — the model's Sprite prototype
+is bottle-shaped.
+
+**Fix: mined real can crops from an older, richer dataset instead of new
+photography.** `aystro-project` (the original brand-classed detector,
+superseded by `aystro-project-v2` but never deleted) has 651 sprite box
+annotations across 227 photos — never migrated into the classifier
+project. Exported `aystro-project` v19 in COCO format (221 images, no
+augmentation, all 6 brand classes present — v11 was tried first and turned
+out to predate Fanta/Sprite labeling, a dead end worth remembering),
+matched COCO entries back to live Roboflow image ids via original filename,
+rescaled box coordinates from the COCO export's resized (704x704) space to
+each source image's real dimensions, and cropped 331 sprite boxes from the
+28 unique source photos they lived in (matching only 28/52 sprite-containing
+images by filename — the rest hit real filename collisions in this messy
+older project, a known risk called out explicitly and accepted for this
+exploratory audit; every image dropped that way is just missing, not
+mislabeled).
+
+Sorted the 331 crops by aspect ratio — cans clustered unmistakably below
+~2.3, bottles above. Filtered to 77 crops (AR ≤ 2.3, min dimension ≥ 20px)
+after a visual pass confirmed they're genuine, mostly-legible Sprite cans.
+Uploaded and labeled all 77 into `aystro-brand-classifier` (tag
+`sprite-can-migration` for traceability), confirmed live via
+`images_search` (297 → 374 sprite images, exact expected count, no drift).
+Generated v3 (1686 images) and retrained
+(`vit-base-patch16-224-in21k`, training id `85ddac80c77b8dada3a0`) — this
+roughly triples the class's can representation (from ~10% of ~297 to
+~87/374, ~23%). Once trained, `brand_general`'s `model_id` needs updating
+from `aystro-brand-classifier/1` to `.../3` in the live workflow (v1 also
+predates the `chat` class already in the project — worth using v3 for both
+reasons) — do this and re-verify live before considering the fix complete.
+
+**Not fixed, flagged for later**: this only addresses the *classifier*
+side. The user's "sometimes not detected at all" symptom could also be a
+*detector* (`aystro-project-v2`, only 226-227 raw images) recall gap on
+can shapes specifically — the same already-documented "800 annotated
+images never migrated" gap from §1 could be affecting can-shaped items
+disproportionately if the migration wasn't representative. Not
+investigated this session; worth a similar aspect-ratio audit of the
+detector's own training images if the can-recall problem persists after
+this classifier fix ships.
+
+## 2026-08-17 (evening) — Packaging type now exposed in the live workflow
+
+Per user request ("enable the ability to check the packaging type").
+`aystro-packaging-classifie` was trained but never wired into any live
+Workflow (flagged as a known gap in earlier entries this session). Retrained
+it first (same orphaned-model-after-rename issue as Fanta/XL — training id
+`b7c14aaa384a2594aebd`, new model correctly `aystro-packaging-classifie-2-...`
+this time), then added it to `aystro-detect-classify` as an **unconditional**
+parallel branch (`packaging` step + `extract_packaging`), not gated behind
+`switch_case` like the flavor classifiers — material isn't brand-conditional,
+it runs on every crop regardless of brand, matching the "shared,
+brand-agnostic" framing already on record in §4. New output field
+`packaging_predictions` (flat can/glass/plastic array, index-aligned with
+`predictions`/`brand_predictions`, same pattern). Verified live via
+`workflows_run` against the real test photo: packaging predictions plausibly
+match the real product mix (Cappy bottles all `plastic`, Coca-Cola/Sprite/
+Fanta items split `can`/`plastic` matching the actual shelf), brand
+predictions unchanged. Not fused into the final classification label
+itself (that's Phase 4 in `ROADMAP_FULL_SKU.md`, not yet built) — this just
+makes the signal available as a separate field, which is what was asked for.

@@ -48,10 +48,25 @@ the report, and `CLAUDE.md` for Roboflow project-naming conventions.
 - [x] Finish `test-aystro-packaging-classifier` labeling (done 2026-08-17:
   1,603/1,606 labeled, glass class preserved) **and train** (done
   2026-08-17: v2, `vit-base-patch16-224-in21k`, ~7 min). **Evaluate
-  blocked** — same plan-tier gap as above.
+  blocked** — same plan-tier gap as above. **Wired into the live Workflow
+  2026-08-17** (`aystro-packaging-classifie`, renamed from
+  `test-aystro-packaging-classifier`) — added as an unconditional parallel
+  branch (material isn't brand-conditional, unlike the flavor classifiers),
+  new `packaging_predictions` output field on `aystro-detect-classify`.
+  Verified live. Not yet fused into the final compound label string — see
+  Phase 4 below.
 - [ ] Audit existing Pepsi/Sprite captures for real flavor diversity (same
   method as the Coca-Cola/XL Energy audits) before deciding whether to
   build classifiers for them.
+- [x] Sprite can-vs-bottle training-data imbalance found and fixed
+  2026-08-17 (user-reported: real cans sometimes undetected, sometimes
+  classified at confidence as low as ~20%). Root cause: `sprite` class in
+  `aystro-brand-classifier` was ~90% bottle crops. Mined 77 genuine can
+  crops from the older `aystro-project` detection dataset (never migrated
+  over) instead of new photography, retrained on `aystro-brand-classifier`
+  v3. See RESEARCH_NOTES.md for the full audit. Detector-side (not
+  classifier-side) can recall not yet investigated — flagged as a possible
+  follow-up if the problem persists after this fix.
 - [x] XL Energy: audited, confirmed real variant diversity (unlike
   Coca-Cola) — 6 classes as of the final label set (`xl-classic`,
   `xl-red`/`xl-maxenergy`, `xl-mojito`, `xl-sugarfree`/`xl-strawberry`,
