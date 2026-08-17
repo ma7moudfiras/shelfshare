@@ -311,18 +311,31 @@ class Builder:
 
 
 def main():
+    # Optional language filter: `python3 build.py ar` builds only the Arabic
+    # edition. Useful while one language is still under review and the other
+    # has not been rewritten to match it yet -- building both would otherwise
+    # silently ship a stale translation alongside an approved one.
+    import sys
+
     import content_en, content_ar
 
     jobs = [
-        (content_en, False, "Times New Roman", "Times New Roman",
+        ("en", content_en, False, "Times New Roman", "Times New Roman",
          "Times New Roman", "Aystro_Field_Training_Report_EN"),
-        (content_ar, True, "Times New Roman", "Noto Naskh Arabic",
+        ("ar", content_ar, True, "Times New Roman", "Noto Naskh Arabic",
          "Times New Roman", "Aystro_Field_Training_Report_AR"),
     ]
+    wanted = {a.lower() for a in sys.argv[1:]}
+    if wanted:
+        unknown = wanted - {code for code, *_ in jobs}
+        if unknown:
+            raise SystemExit(f"unknown language(s): {', '.join(sorted(unknown))}")
+        jobs = [j for j in jobs if j[0] in wanted]
+
     out = os.path.join(HERE, "out")
     os.makedirs(out, exist_ok=True)
 
-    for mod, rtl, body, cs, head, name in jobs:
+    for _, mod, rtl, body, cs, head, name in jobs:
         b = Builder(rtl, body, cs, head)
         doc = b.build(mod.META, mod.ABSTRACT, mod.SECTIONS, mod.REFERENCES)
         path = os.path.join(out, name + ".docx")
