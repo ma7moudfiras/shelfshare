@@ -40,12 +40,24 @@ the report, and `CLAUDE.md` for Roboflow project-naming conventions.
 
 - [ ] Run `Evaluate` on `aystro-brand-classifier` v1 and
   `test-aystro-brand-classifier` v4 — no recorded accuracy exists for
-  either despite both serving live traffic.
-- [ ] Finish `test-aystro-packaging-classifier`: resume paused labeling
-  (136/1606 done as of 2026-08-15), generate version, train, evaluate.
+  either despite both serving live traffic. **Blocked (found 2026-08-17):**
+  per Roboflow's own docs, auto-evaluation is a paid-plan feature that
+  runs at training time only — there is no manual trigger for an
+  already-finished training. Needs a plan upgrade + re-training to ever
+  get real numbers here, not just an API call. See RESEARCH_NOTES.md §2.
+- [x] Finish `test-aystro-packaging-classifier` labeling (done 2026-08-17:
+  1,603/1,606 labeled, glass class preserved) **and train** (done
+  2026-08-17: v2, `vit-base-patch16-224-in21k`, ~7 min). **Evaluate
+  blocked** — same plan-tier gap as above.
 - [ ] Audit existing Pepsi/Sprite/XL Energy captures for real flavor
   diversity (same method as the Coca-Cola audit) before deciding whether to
   build classifiers for them.
+- [x] ~~Coca-Cola flavor diversity~~ re-audited 2026-08-17 (user asked to
+  reconsider deleting/restarting `test-aystro-coca-classifier`) — same
+  conclusion as before, now independently re-verified: ~286/301 classic,
+  0 confirmed Zero, 1 plausible Diet/Light candidate that's almost
+  certainly one physical can, not real diversity. Still a Phase 2 blocker,
+  see RESEARCH_NOTES.md.
 
 ## Phase 1 — Cappy flavor classifier
 

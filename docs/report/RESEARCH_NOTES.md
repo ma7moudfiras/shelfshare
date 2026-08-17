@@ -51,20 +51,32 @@ the historical progression narrative only — not the comparison to lead with):
   of the per-class data starvation problem the report argues from statistics
   alone.
 
-## 2. Classifier accuracy — not yet measured, real gap
+## 2. Classifier accuracy — not yet measured, real gap (root cause confirmed 2026-08-17)
 
 Roboflow recorded no `metrics` (null) on the finished classification
-trainings for either `aystro-brand-classifier` v1 (Stage 2, brand) or
-`test-aystro-brand-classifier` v4 (Stage 3, Fanta flavor) — `model_evals_list`
-returns empty for both, workspace-wide and project-scoped. Detection training
-runs populate `map50`/`precision`/`recall` automatically; classification runs
-apparently need an explicit "Evaluate" step that hasn't been run yet (either
-via the Roboflow UI or an MCP eval-trigger path not yet identified).
+trainings for `aystro-brand-classifier` v1 (Stage 2, brand),
+`test-aystro-brand-classifier` v4 (Stage 3, Fanta flavor), and now also
+`test-aystro-packaging-classifier` v2 t1 (material) — `model_evals_list`
+returns empty for all three, workspace-wide and project-scoped. Detection
+training runs populate `map50`/`precision`/`recall` automatically;
+classification runs do not.
 
-**Action needed before the report can state classifier accuracy**: run that
-evaluation for both classifiers (and later the packaging-material classifier
-once trained). Do not state a classifier accuracy number in the report until
-this is done — there is currently no real number to cite.
+**Root cause found**: per Roboflow's own `training-and-evaluation` skill
+doc, "Model Evaluation" — the step that populates these metrics — is a
+**paid-plan feature that auto-runs after training**; there is no manual
+MCP or UI trigger to run it after the fact on a plan without that
+entitlement. This is a plan-tier gap, not a missing step we haven't found
+yet. All three classifiers hit the same wall, which is why none of them
+have real metrics as of 2026-08-17.
+
+**Action needed before the report can state classifier accuracy**: either
+upgrade the workspace plan so auto-eval runs on future trainings (existing
+finished trainings would still need re-training to get evaluated, since
+eval runs at training time, not on demand after), or accept that no
+accuracy number can be cited for any of the three classifiers. Do not
+state a classifier accuracy number in the report until one of those
+happens — there is currently no real number to cite for any classifier in
+this workspace.
 
 ## 3. Training / compute cost ("hardware cost") — real numbers, from Roboflow's own rate card
 
@@ -398,3 +410,60 @@ resume cycle.
   investigated further; flagging for anyone training on this data.
 - Not yet trained or evaluated — this only completes the labeling step from
   §5.
+
+## 2026-08-17 — Packaging classifier trained; Coca-Cola variant data re-audited, confirmed insufficient
+
+**Packaging-material classifier (`test-aystro-packaging-classifier`), continuing
+from the labeling-complete state above:**
+- First version generated (v1) had **zero validation/test images** — all
+  4,806 images landed in `train` because the source images had never been
+  split at upload time. This would have made the classifier untrainable in
+  a way that's actually verifiable (no eval set) and was caught before
+  training, not after.
+- Fixed via `datasets_rebalance_splits` (70/20/10 target) at the project
+  level, which redistributed the 1,602 source images to train:1121/
+  valid:320/test:161. v1 was deleted (splits are frozen at version-generation
+  time, so the fix required a fresh version) and v2 regenerated with the
+  same preprocessing/augmentation as before (auto-orient, resize 224x224,
+  blur 1px + noise 0.1%, 3x image versions) — 3,844 images, train:3363/
+  valid:320/test:161 after augmentation (valid/test correctly excluded from
+  the 3x multiplier).
+- Trained on v2: `vit-base-patch16-224-in21k`, same architecture as the
+  brand and Fanta classifiers. Finished in ~7 minutes
+  (`ma7mouds-workspace/test-aystro-packaging-classifier-2-vit-base-patch16-224-in21k-t1`).
+  `metrics: null` — see the updated §2 above; this is a plan-tier gap
+  affecting every classifier in this workspace, confirmed root cause, not
+  something specific to this run.
+
+**Coca-Cola variant classifier — reconsidered per user request, same
+conclusion, now backed by a real re-audit instead of trusting the old one.**
+User recalled cancelling a labeling attempt on `test-aystro-coca-classifier`
+~4 days prior and asked whether to delete the existing 301 images and start
+fresh. Investigated instead of guessing:
+- `test-aystro-coca-classifier` holds exactly 301 images, all still the
+  single placeholder class `coca-cola`, seeded 1:1 from
+  `aystro-brand-classifier`'s `coca-cola` class (also 301 at audit time) —
+  confirming this project already contains 100% of the real captured
+  Coca-Cola crops that exist. There is nothing to gain by deleting and
+  restarting; the constraint is real-world photo diversity, not anything
+  about how the data is currently organized.
+- Ran a background-agent visual audit (same contact-sheet pattern as the
+  Fanta/packaging-material audits): downloaded all 301 crops, sorted by
+  dominant color (a much stronger signal for Coke variants than Fanta
+  flavors — classic is red, Zero is black, Diet/Light is silver).
+  ~286/301 (95%) classic; **zero confirmed Coke Zero (black) instances**;
+  the one plausible Diet/Light (silver-bodied, red script) finding is 3
+  sequentially-numbered crops (`2912.jpg`/`2913.jpg`/`2914.jpg`) almost
+  certainly from a single physical can in one shelf photo, not independent
+  sightings. Spot-checked the silver cluster's contact-sheet crop directly
+  (not just trusting the agent's report) — confirms the finding: most of
+  that cluster is glare/reflective caps on ordinary red bottles, not real
+  silver cans.
+- **Conclusion unchanged from the original audit, but now independently
+  re-verified**: not enough real variant diversity to train a 3-class
+  classifier (compare to Fanta, which had real spread across all target
+  flavors). Stays a Phase 2 (field photography) blocker per
+  `ROADMAP_FULL_SKU.md` — needs a rep to specifically shoot a handful of
+  actual Zero/Diet units. Once that exists, labeling will be easy (color is
+  a strong, high-contrast signal); the gap today is capture, not labeling
+  effort or data organization.
