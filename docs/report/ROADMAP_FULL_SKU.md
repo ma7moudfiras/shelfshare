@@ -49,9 +49,17 @@ the report, and `CLAUDE.md` for Roboflow project-naming conventions.
   1,603/1,606 labeled, glass class preserved) **and train** (done
   2026-08-17: v2, `vit-base-patch16-224-in21k`, ~7 min). **Evaluate
   blocked** — same plan-tier gap as above.
-- [ ] Audit existing Pepsi/Sprite/XL Energy captures for real flavor
-  diversity (same method as the Coca-Cola audit) before deciding whether to
+- [ ] Audit existing Pepsi/Sprite captures for real flavor diversity (same
+  method as the Coca-Cola/XL Energy audits) before deciding whether to
   build classifiers for them.
+- [x] XL Energy: audited, confirmed real variant diversity (unlike
+  Coca-Cola) — 5 classes (`xl-classic` 247, `xl-red` 20, `xl-sugarfree` 12,
+  `xl-mojito` 6, `xl-doublekick` 6; heavily imbalanced toward classic).
+  Labeled, split fixed proactively before version generation (unlike the
+  packaging classifier's post-hoc fix), and trained 2026-08-17
+  (`test-aystro-xlenergy-classifier` v1, `vit-base-patch16-224-in21k`,
+  `metrics: null` — same plan-tier gap as every other classifier here). Not
+  yet wired into the live Workflow. See RESEARCH_NOTES.md.
 - [x] ~~Coca-Cola flavor diversity~~ re-audited 2026-08-17 (user asked to
   reconsider deleting/restarting `test-aystro-coca-classifier`) — same
   conclusion as before, now independently re-verified: ~286/301 classic,

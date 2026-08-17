@@ -467,3 +467,57 @@ fresh. Investigated instead of guessing:
   actual Zero/Diet units. Once that exists, labeling will be easy (color is
   a strong, high-contrast signal); the gap today is capture, not labeling
   effort or data organization.
+
+## 2026-08-17 (later) — XL Energy variant classifier trained
+
+Unlike Coca-Cola, the Phase 0 audit for XL Energy found real, confirmable
+variant diversity in existing captures — enough to label and train a
+5-class classifier rather than stopping at "not enough data" the way the
+Coca-Cola audit did. New project: `test-aystro-xlenergy-classifier`.
+
+**Split fix applied proactively this time.** The packaging-material
+classifier (§ above) generated its first version with zero valid/test
+images because the source images had never been split before version
+generation, and the bug was only caught after training. For XL Energy,
+`datasets_rebalance_splits` was applied at the project level *before*
+generating v1, so the first version already came out with a real eval
+split — no wasted training run, no version-delete-and-regenerate cycle
+this time.
+
+**Final label distribution, verified live** (`images_search` per class,
+`in_dataset=true` — not the project-summary `classes` stat, which has been
+observed stale/out-of-sync with real-time queries throughout this
+engagement and should never be trusted alone for reporting numbers):
+
+| Class | Count |
+|---|---|
+| `xl-classic` | 247 |
+| `xl-red` | 20 |
+| `xl-sugarfree` | 12 |
+| `xl-mojito` | 6 |
+| `xl-doublekick` | 6 |
+| **Total** | **291** |
+
+Heavily imbalanced toward `xl-classic` (85% of the data) — worth flagging
+for the report the same way the Fanta grape/`aystro-project` v2 imbalances
+were: real variant diversity exists and is worth capturing as distinct
+classes, but `xl-mojito`/`xl-doublekick`/`xl-sugarfree` are thin (6-12
+images each) and would benefit from targeted photography, same as the
+Cappy/Pepsi/Sprite audits still pending in `ROADMAP_FULL_SKU.md` Phase 0.
+
+Project-level splits: train 204 / valid 58 / test 29 (291 total, matching
+the class counts above exactly). Version 1 (699 images post-augmentation):
+train 612 / valid 58 / test 29 — valid/test correctly excluded from the
+augmentation multiplier, same pattern as the packaging classifier's v2.
+
+**Trained**: `vit-base-patch16-224-in21k` (same architecture as the brand,
+Fanta, and packaging classifiers), training id `4b374a05a67ea782bff2`,
+finished in ~4.4 minutes
+(`ma7mouds-workspace/test-aystro-xlenergy-classifier-1-vit-base-patch16-224-in21k-t1`).
+`metrics: null` — expected, same plan-tier gap as every other classifier in
+this workspace (§2 above), not specific to this run.
+
+Not yet wired into any Workflow. Per the Phase 3.5 pattern already applied
+to Fanta, adding XL Energy as a live classification branch should use
+`switch_case` + `first_non_empty_or_default` from the start rather than an
+unconditional parallel branch, to avoid repeating the O(N×K) mistake.
