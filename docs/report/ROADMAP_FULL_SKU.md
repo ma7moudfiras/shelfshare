@@ -63,8 +63,11 @@ the report, and `CLAUDE.md` for Roboflow project-naming conventions.
   classified at confidence as low as ~20%). Root cause: `sprite` class in
   `aystro-brand-classifier` was ~90% bottle crops. Mined 77 genuine can
   crops from the older `aystro-project` detection dataset (never migrated
-  over) instead of new photography, retrained on `aystro-brand-classifier`
-  v3. See RESEARCH_NOTES.md for the full audit. Detector-side (not
+  over) instead of new photography, trained `aystro-brand-classifier` v3
+  (1686 images, also carries the `chat` class v1 lacked), and **deployed
+  it live** — `brand_general` now points at `aystro-brand-classifier/3`,
+  re-verified via `workflows_run` with no regression on unaffected
+  classes. See RESEARCH_NOTES.md for the full audit. Detector-side (not
   classifier-side) can recall not yet investigated — flagged as a possible
   follow-up if the problem persists after this fix.
 - [x] XL Energy: audited, confirmed real variant diversity (unlike

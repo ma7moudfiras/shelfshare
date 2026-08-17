@@ -679,6 +679,20 @@ investigated this session; worth a similar aspect-ratio audit of the
 detector's own training images if the can-recall problem persists after
 this classifier fix ships.
 
+**Trained and deployed, same session.** `aystro-brand-classifier` v3
+finished training (`vit-base-patch16-224-in21k`, training id
+`85ddac80c77b8dada3a0`, ~4.3 min) — new model correctly
+`aystro-brand-classifier-3-vit-base-patch16-224-in21k-t1`, no orphaning
+this time since v3 was generated and trained under the current project
+name throughout. Live workflow's `brand_general` step re-pointed from
+`aystro-brand-classifier/1` to `.../3` (v3 also carries the `chat` class
+that v1 lacked). Re-verified live via `workflows_run` against the same
+real test photo used throughout this engagement: output byte-identical to
+the pre-switch baseline for every field — expected, since this particular
+photo has no Sprite cans among its crops to exercise the new data, but it
+confirms the version switch introduced no regression on the classes it
+does cover.
+
 ## 2026-08-17 (evening) — Packaging type now exposed in the live workflow
 
 Per user request ("enable the ability to check the packaging type").
