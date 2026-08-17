@@ -12,7 +12,7 @@ import 'detection_exception.dart';
 import 'detection_service.dart';
 import 'workflow_response_parser.dart';
 
-/// Runtime parameters accepted by the `aystro-detect-classify-brand` workflow.
+/// Runtime parameters accepted by the `aystro-detect-classify` workflow.
 ///
 /// Names mirror the workflow's declared `WorkflowParameter` inputs exactly,
 /// as returned by the Roboflow API:
@@ -21,13 +21,14 @@ import 'workflow_response_parser.dart';
 /// |---------------------|-----------------------------------------|
 /// | `detect_confidence` | `0.4`                                    |
 /// | `detect_model_id`   | `ma7mouds-workspace/aystro-project-v2/2` |
-/// | `brand_model_id`    | `ma7mouds-workspace/aystro-brand-classifier/1` |
 ///
-/// This is a 3-stage pipeline (detect -> crop -> classify brand), so there is
-/// no single `model_id` the way a plain single-model workflow has one. Only
-/// the detector is overridable per call; the brand classifier stays pinned to
-/// the workflow's own default. [AppConfig.defaultModelId] points at the
-/// newest trained detector version.
+/// This is a multi-stage pipeline (detect -> crop -> classify brand, with a
+/// Fanta-flavor classifier conditionally routed in via `switch_case`), so
+/// there is no single `model_id` the way a plain single-model workflow has
+/// one. Only the detector is overridable per call; every classifier stage is
+/// pinned inside the workflow definition itself, not exposed as a runtime
+/// parameter. [AppConfig.defaultModelId] points at the newest trained
+/// detector version.
 ///
 /// Sending a name the workflow does not declare is rejected by the API, so this
 /// class is the single place those names are written down.
@@ -65,7 +66,7 @@ class RoboflowParameters {
   }
 }
 
-/// Runs the `aystro-detect-classify-brand` Roboflow Workflow over a captured
+/// Runs the `aystro-detect-classify` Roboflow Workflow over a captured
 /// photo.
 ///
 /// There is no official Dart SDK, so this posts to the serverless REST endpoint

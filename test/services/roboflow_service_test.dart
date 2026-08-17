@@ -29,7 +29,7 @@ void main() {
       envString: '''
 ROBOFLOW_API_KEY=test_key
 ROBOFLOW_WORKSPACE=ma7mouds-workspace
-ROBOFLOW_WORKFLOW_ID=aystro-detect-classify-brand
+ROBOFLOW_WORKFLOW_ID=aystro-detect-classify
 ROBOFLOW_BASE_URL=https://serverless.roboflow.com
 ''',
     );
@@ -113,7 +113,7 @@ ROBOFLOW_BASE_URL=https://serverless.roboflow.com
       expect(request.method, 'POST');
       expect(
         request.url.toString(),
-        'https://serverless.roboflow.com/ma7mouds-workspace/workflows/aystro-detect-classify-brand',
+        'https://serverless.roboflow.com/ma7mouds-workspace/workflows/aystro-detect-classify',
       );
       expect(request.headers['Content-Type'], contains('application/json'));
 
@@ -134,8 +134,8 @@ ROBOFLOW_BASE_URL=https://serverless.roboflow.com
         reason: 'a top-level parameters block is silently ignored by Roboflow',
       );
       // Only detect_confidence/detect_model_id are sent -- there is no
-      // top-level model_id once the workflow runs two models, and
-      // brand_model_id has no per-call override.
+      // top-level model_id once the workflow runs multiple classification
+      // stages, and neither classifier is exposed as a runtime parameter.
       expect(
         (body['inputs'] as Map).keys,
         containsAll(['image', 'detect_confidence', 'detect_model_id']),

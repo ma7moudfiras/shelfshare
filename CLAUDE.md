@@ -27,34 +27,92 @@ for share-of-shelf reporting.
 
 ## Roboflow project naming — read this before touching any project
 
+As of 2026-08-17 the `test-` prefix was dropped from every project/workflow
+that reached production quality. **Old names below are historical** —
+useful for reading old commits/docs, not for new work.
+
 - `aystro-project` — the **original**, brand-classed detector (6 classes:
   coca-cola, fanta, sprite, pepsi, cappy, xl_energy). Has many versions (20+);
   **v20 (1191 images, rfdetr-large) is the mature/representative one**, not
   v1/v2 (tiny early iterations from day one). Superseded but kept for the
-  historical comparison.
+  historical comparison. Never had a `test-` prefix.
 - `aystro-project-v2` — the **current production** detector: class-agnostic,
   single "product" class. Only 226-227 raw images currently — a real gap,
   since `aystro-project` has ~1191 annotated images that were never migrated
-  over. v2 is the trained/production version.
-- `aystro-brand-classifier` — Stage 2, brand classification (all 6 brands),
-  trained on crops from the detector's boxes.
-- A project prefixed **`test-`** (`test-aystro-project-v2`,
-  `test-aystro-brand-classifier`, `test-aystro-coca-classifier`,
-  `test-aystro-packaging-classifier`) is a **working/experimental copy**,
-  not automatically "the test environment" in the software sense — check
-  what it actually contains before assuming. E.g. `test-aystro-brand-classifier`
-  no longer holds all 6 brands; it was trimmed down to hold **only Fanta
-  flavor classes** (fanta-orange/fanta-grape/fanta-redapple) and is Stage 3
-  for Fanta specifically.
-- The live workflow is `test-aystro-detect-classify-brand` (Roboflow
-  Workflow id `eeUDKKw0KlOkitKXDmCX`) — hierarchical: class-agnostic detect →
-  crop → brand classify (`aystro-brand-classifier`) → Fanta flavor classify
-  in parallel (`test-aystro-brand-classifier`) → a custom Python block
-  (`MergeBrandClasses`) picks the flavor label when the brand is Fanta, else
-  the plain brand. **Gotcha already hit once**: custom Python blocks receive
-  per-crop inputs as plain **scalars**, not lists — `list(some_string)`
+  over. v2 is the trained/production version. Never had a `test-` prefix,
+  and was **not** renamed on 2026-08-17 — don't confuse it with the next one.
+- `aystro-product-detector` (renamed from `test-aystro-project-v2`) — a
+  **separate experimental copy** of the detector, similar but not identical
+  data (228 images vs. `aystro-project-v2`'s 227). Confusingly close in name
+  to the actual production detector above; it is **not** used by the live
+  workflow. Check which one you mean before touching either.
+- `aystro-brand-classifier` — Stage 2, brand classification (all 6 brands +
+  a small `chat` class for a previously-mislabeled product). Never had a
+  `test-` prefix.
+- `aystro-fanta-classifier` (renamed from `test-aystro-brand-classifier`) —
+  Stage 3, Fanta-flavor-only (fanta-orange/fanta-grape/fanta-redapple). The
+  old name was misleading (sounds like a general brand classifier; it never
+  was one) — that's *why* it got renamed.
+- `aystro-coca-classifier` (renamed from `test-aystro-coca-classifier`) —
+  single-class Coca-Cola placeholder, seeded from `aystro-brand-classifier`,
+  never trained (real flavor diversity not yet captured — Phase 2 blocker,
+  see `docs/report/ROADMAP_FULL_SKU.md`).
+- `aystro-packaging-classifie` (renamed from `test-aystro-packaging-classifier`
+  — **note the missing trailing "r", that's the actual live slug, not a typo
+  to "fix"**) — material classifier (can/glass/plastic), trained but not yet
+  wired into any live Workflow.
+- `aystro-xl-classifier` (renamed from `test-aystro-xlenergy-classifier`) —
+  XL Energy variant classifier (xl-classic/xl-red or xl-maxenergy/
+  xl-mojito/xl-doublekick/xl-strawberry/xl-sportsmaniac — class list has
+  changed more than once; check `projects_get` for the live set before
+  assuming, not this file). Not yet wired into the live Workflow.
+
+**Gotcha confirmed 2026-08-17, costly to rediscover**: renaming a Roboflow
+project does **not** carry the rename through to any model already trained
+in it. The model artifact's own id is generated at training time from the
+project name *then*, e.g. `test-aystro-brand-classifier-4-vit-base-patch16-
+224-in21k-t1` — after the project became `aystro-fanta-classifier`, calling
+that model as `aystro-fanta-classifier/4` (the natural post-rename
+reference) 404s at the serving layer, even though `projects_get`/
+`versions_get` show the version as `ready: true` with a `finished` training.
+The model is not deleted or corrupted — `models_get` on its exact old
+generated name still resolves it — but Workflow classification steps only
+accept the `project_id/version_number` shape, not a bare model name, so
+there is no way to reference the orphaned model from a Workflow at all.
+**The only fix is retraining** (`trainings_create` on the existing version —
+no relabeling needed if the version's data is already correct). Any project
+renamed here needs its trained versions re-trained before they're usable
+again; check this before wiring a "should already be trained" model into a
+Workflow.
+
+- The live workflow is `aystro-detect-classify` (renamed from
+  `test-aystro-detect-classify-brand`; Roboflow Workflow id
+  `eeUDKKw0KlOkitKXDmCX`) — class-agnostic detect → crop → brand classify
+  (`aystro-brand-classifier`) → **`switch_case`-gated** Fanta-flavor classify
+  (`aystro-fanta-classifier`, only invoked when the brand classifier said
+  `fanta`) → `roboflow_core/first_non_empty_or_default@v1` merges flavor over
+  plain brand → write back onto the detection. The old custom
+  `MergeBrandClasses` Python-block architecture (mentioned in old commits)
+  was replaced by this `switch_case` + `first_non_empty_or_default` pattern
+  on 2026-08-16 — see `docs/report/ROADMAP_FULL_SKU.md` Phase 3.5 for why
+  (it turns O(N×K) classifier calls into true O(N)).
+  **Second gotcha, also costly**: the *old* slug
+  `test-aystro-detect-classify-brand` was **not freed by the rename** — a
+  different, older, unmaintained workflow already occupied it and still
+  does. It has no Fanta routing and returns a differently-shaped
+  `brand_predictions` (full prediction objects, not a flat string list). Any
+  code/docs/env var pointing at `...-brand` (with `-brand`) is pointing at
+  the wrong, stale pipeline — always use `aystro-detect-classify` (no
+  `-brand`) for the real one. This exact confusion broke the app's
+  `ROBOFLOW_WORKFLOW_ID` default in production until caught and fixed
+  2026-08-17 — see `docs/report/RESEARCH_NOTES.md`.
+- **Gotcha from before the rename, still true**: custom Python blocks
+  receive per-crop inputs as plain **scalars**, not lists — `list(some_string)`
   silently explodes a class name into characters. Never assume list-wrapping
   without checking live output first (`workflows_run` against a real photo).
+  No longer hit in the live workflow (no custom blocks remain in it after
+  the Phase 3.5 rework above), but still a real platform behavior to watch
+  for in any future custom block.
 
 ## Established working patterns (reuse these, don't reinvent)
 

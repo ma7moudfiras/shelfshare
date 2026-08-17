@@ -521,3 +521,66 @@ Not yet wired into any Workflow. Per the Phase 3.5 pattern already applied
 to Fanta, adding XL Energy as a live classification branch should use
 `switch_case` + `first_non_empty_or_default` from the start rather than an
 unconditional parallel branch, to avoid repeating the O(N×K) mistake.
+
+## 2026-08-17 (later still) — Project/workflow renames broke production; root-caused and fixed
+
+User dropped the `test-` prefix from every project/workflow that had reached
+production quality (`test-aystro-brand-classifier` → `aystro-fanta-classifier`,
+`test-aystro-coca-classifier` → `aystro-coca-classifier`,
+`test-aystro-packaging-classifier` → `aystro-packaging-classifie` [sic, real
+live slug], `test-aystro-xlenergy-classifier` → `aystro-xl-classifier`,
+`test-aystro-project-v2` → `aystro-product-detector`, and the live workflow
+`test-aystro-detect-classify-brand` → `aystro-detect-classify`) directly via
+the Roboflow UI, plus deleted most of the ~2,900 unlabeled/leftover images
+sitting in the Fanta classifier project from before its Fanta-only trim
+(1,619 never-in-dataset + most of 1,309 in-dataset-unlabeled → down to
+299 in-dataset + 310 still-unannotated per live `projects_list`). This
+surfaced two real, previously-unknown platform bugs, both fixed same session:
+
+**Bug 1 — the app was pointed at a different, wrong workflow.** The app's
+`ROBOFLOW_WORKFLOW_ID` default (`api/detect.js`, `lib/config/app_config.dart`,
+`.env.example`, README, tests) was hardcoded to `aystro-detect-classify-brand`.
+Renaming the live workflow to `aystro-detect-classify` did **not** free the
+old `-brand` slug — a different, older, unmaintained workflow (id
+`n3z2tXa0OUkEyXXsr63o`, last touched 2026-08-11, no Fanta routing, no
+`switch_case`) already lived there and instantly became what the app was
+calling. Its `brand_predictions` output is shaped differently too (full
+prediction objects via `$steps.brand.predictions`, not the flat string list
+via `$steps.merge_brands.output`), so this was a silent regression, not just
+"running an older model." Confirmed via `workflows_list`/`workflows_get`,
+not assumed. Fixed by updating every `ROBOFLOW_WORKFLOW_ID` default (and
+doc comments/README) to `aystro-detect-classify`, with an explicit code
+comment warning not to revert to the `-brand` slug.
+
+**Bug 2 — renaming a project orphans every model already trained in it.**
+The live workflow's `brand_fanta` step still referenced
+`test-aystro-brand-classifier/4` (a dead slug) — fixed to
+`aystro-fanta-classifier/4`, which *looked* right (`versions_get` showed
+the version `ready: true`, training `finished`) but 404'd at the serving
+layer when actually run (`workflows_run` against a real photo, not
+assumed). Root cause: the trained model's own generated id bakes in the
+project name **at training time**, e.g.
+`test-aystro-brand-classifier-4-vit-base-patch16-224-in21k-t1` — renaming
+the project afterward does not rename this artifact. `models_get` on that
+exact old generated name still resolves the model fine (it's not deleted),
+but Workflow classification steps only accept `project_id/version_number`,
+not a bare model name — so a renamed project's old models become
+*permanently unreferenceable from any Workflow* until retrained. Confirmed
+this is systemic, not Fanta-specific: `aystro-packaging-classifie` v2 and
+`aystro-xl-classifier` v1 show the exact same stale-model-id pattern in
+their `trainings[].modelIds`. Fix: `trainings_create` on the existing
+version (no relabeling needed, data was already correct) — retrained
+`aystro-fanta-classifier` v4 and `aystro-xl-classifier` v1 same session
+(XL Energy needed retraining anyway, independently, because its class list
+changed after v1's original training — see the entry above). Both fixes
+(workflow slug + model reference) verified live via `workflows_run`/
+`workflow_specs_run` against a real photo before being called done, not
+just via `workflows_get` showing the "right" config — the config alone was
+misleading twice in this investigation (see Bug 1/2 above), which is worth
+remembering the next time a Roboflow rename happens: **always re-verify
+with a real inference call, config inspection alone is not sufficient.**
+
+**Not yet done**: `aystro-packaging-classifie` v2 has the same orphaned-model
+problem but isn't wired into any live Workflow, so it wasn't retrained this
+session (no urgency) — flagging so a future session doesn't assume it's
+servable just because `versions_get` shows it finished.

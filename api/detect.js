@@ -14,10 +14,14 @@
  *
  * Optional:
  *   ROBOFLOW_WORKSPACE    -- defaults to "ma7mouds-workspace"
- *   ROBOFLOW_WORKFLOW_ID  -- defaults to "aystro-detect-classify-brand", the
- *                            3-stage detect -> crop -> classify-brand pipeline.
- *                            It declares detect_confidence/detect_model_id/
- *                            brand_model_id, not a single model_id.
+ *   ROBOFLOW_WORKFLOW_ID  -- defaults to "aystro-detect-classify", the
+ *                            detect -> crop -> classify-brand pipeline (with
+ *                            Fanta-flavor classification conditionally
+ *                            routed in via switch_case). It declares
+ *                            detect_confidence/detect_model_id, not a single
+ *                            model_id. NOTE: "aystro-detect-classify-brand"
+ *                            (with "-brand") is a different, older,
+ *                            unmaintained workflow -- do not point here at it.
  *   ROBOFLOW_BASE_URL     -- defaults to "https://serverless.roboflow.com"
  *   ROBOFLOW_MODEL_ID     -- overrides the workflow's detect_model_id, e.g.
  *                            "aystro-project-v2/2". Lets a web deployment
@@ -35,7 +39,7 @@
 
 const DEFAULTS = {
   workspace: 'ma7mouds-workspace',
-  workflowId: 'aystro-detect-classify-brand',
+  workflowId: 'aystro-detect-classify',
   baseUrl: 'https://serverless.roboflow.com',
 };
 
