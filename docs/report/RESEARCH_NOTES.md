@@ -1025,3 +1025,122 @@ source project only knows brand-level names" issue noted earlier in this
 session, not the specific bug reported. Worth a real fix later (aggregate
 the chip list across the variant-classifier projects, or add
 `coca`/`xl` root aliases), just not bundled into this pass.
+
+---
+
+## 2026-08-18 (later): Real Roboflow evaluations for every production model — first non-invented accuracy numbers
+
+The user activated a Roboflow free trial, which restored both training and
+serverless-inference credits (see the "402 Payment Required" entry above for
+the outage this fixed) and, critically, let Roboflow's Evaluate feature
+actually run against every live model. This is the first time this project
+has had real, tool-reported precision/recall/mAP numbers instead of `metrics:
+null` — per the standing "never invent numbers" rule, everything below is
+copied directly from `model_evals_get` / `model_evals_get_performance_by_class`
+/ `model_evals_get_confusion_matrix` / `model_evals_get_recommendations`, not
+estimated.
+
+### Detector — `aystro-project-v2/2` (rfdetr-large, class-agnostic "product")
+- mAP@50 **93.3%**, mAP@50-95 **76.5%**, mAP@75 **87.6%**
+- precision 87.4%, recall 90.9%
+- Roboflow's own computed **optimal confidence threshold: 0.41** — this
+  independently validates the app's `defaultConfidence` (lowered to 0.4 this
+  session) and the workflow's `detect_confidence` default (already 0.4);
+  neither number was chosen with this eval in hand, they just landed almost
+  exactly on Roboflow's own recommendation.
+- Recommendation flags 54 missed "product" detections at the 41% threshold,
+  and that the test split (34/384 images, 9%) is under Roboflow's suggested
+  minimum absolute size (50).
+
+### Brand classifier — `aystro-brand-classifier/3` (live `brand_general` step)
+- cappy 100% P / 92.9% R, coca-cola 100% P / 90% R, fanta 100% P / 100% R,
+  sprite 100% P / 100% R, xl_energy 100% P / 95% R.
+- `chat` and `pepsi`: 0/0 — zero test-set support, i.e. no real photos of
+  either yet reached the test split. Not a model failure, a data gap.
+- Headline: brand-level routing (the thing every downstream variant
+  classifier depends on) is essentially solved for the five brands with any
+  real photography behind them.
+
+### XL Energy classifier — `aystro-xl-classifier/1` (live)
+- xl-classic 100/100, xl-red 100/100, xl-sugarfree 100/100.
+- xl-doublekick and xl-mojito: 0/0 support — confirms the "thin classes,
+  blocked on field photography" line item (#8) with real numbers now instead
+  of just a hunch.
+
+### Fanta classifier — before/after the "Unlabeled" bug fix, same eval tooling
+This is a clean natural experiment: v4 is the version with the bogus
+`Unlabeled` class (311 real, unannotated Fanta photos that got swept into
+training as a fake class — see the "Unlabeled" bug entry above); v5 is the
+retrained fix.
+- **v4**: `Unlabeled` scores **100% P / 100% R at threshold 0.91** — i.e. the
+  model had cleanly, confidently learned to carve out a class that was
+  actually just mislabeled real product photos. That's the eval-data proof
+  that the contamination wasn't noise, it was a coherent, learnable (wrong)
+  pattern — which is exactly why it was misfiring in production at ~98%
+  confidence instead of failing loud. Real classes: fanta-grape 100% P /
+  66.7% R, fanta-orange 100/100, fanta-redapple 100/100.
+- **v5** (fixed, live): `Unlabeled` is gone entirely. fanta-grape unchanged at
+  100% P / 66.7% R (still the weakest flavor — same underlying data gap,
+  unrelated to the bug), fanta-orange 100/100, fanta-redapple 100/100 (optimal
+  threshold rose from 0 to 0.67 — the model is now more confidently separating
+  redapple from the rest with the noise removed).
+- Net result for the report: removing the corrupt class cost nothing on the
+  real classes' held-out numbers and eliminated a class that shouldn't have
+  existed. Good before/after pair to show directly.
+
+### Packaging classifier — `aystro-packaging-classifie/2` (live `packaging` step)
+Note: `CLAUDE.md` currently describes this project as "trained but not yet
+wired into any live Workflow" — that line is stale; it has in fact been the
+`packaging` step in `aystro-detect-classify` for a while (confirmed by
+reading the live spec directly this session). Worth fixing that doc note
+separately.
+- can 98.5% P / 92.9% R, plastic 93.3% P / 95.5% R, glass 100% P / 33.3% R.
+- Confusion matrix (all-split): can↔plastic confused 11+9 times combined;
+  glass has only **3 ground-truth test instances** against a 161-instance
+  dataset with a median per-class count of 70 — Roboflow's own
+  class-imbalance check flags glass as violating both the minimum-count and
+  relative-ratio thresholds.
+- Directly quantifies the "glass packaging" data gap already tracked in
+  ROADMAP_FULL_SKU.md (#8) — this is the real number behind that line item.
+
+### Cappy classifier — `aystro-cappy-classifier/1` (live, weakest link in the pipeline)
+- Overall: precision 56.2%, recall 52.1% — by far the worst-performing
+  classifier in production.
+- Real signal exists for the flavors with actual data: cappy-grape 100/100,
+  cappy-mango 100/100, cappy-strawberry 100/100, cappy-orange 100% P / 66.7%
+  R, cappy-apple 100% P / 50% R, cappy-lemon 66.7% P / 50% R.
+- Six of twelve classes (cherry, grapefruit, mix, peach, pomegranate,
+  tamarind) score **0/0** — essentially no test-set support at all.
+  Roboflow's recommendation output gives exact per-class ground-truth counts:
+  peach=1, strawberry=1, apple=2, mango=2, mix=3, grape=4, lemon=4, orange=6
+  — every one of these is under Roboflow's own 30-instance minimum-count
+  recommendation, out of a 230-image dataset with only a 23-image (10%) test
+  split.
+- Confusion matrix shows the errors are real, sensible confusions (lemon↔
+  mango, mix↔grape/lemon/orange), not random noise — i.e. this reads as a
+  data-scarcity problem, not an architecture problem.
+
+### Coca-Cola classifier — `aystro-coca-classifier/1` (live, wired this session)
+- coca-classic 100% P / 100% R (dominant class, 50 of 55 total ground-truth
+  test instances in the "all"-split confusion matrix).
+- coca-zero 100% P / 66.7% R — 3 of the "all"-split zero instances were
+  predicted as classic.
+- coca-diet: **0% P / 0% R**, complete failure — confused entirely as
+  coca-classic in the confusion matrix (2/2). Roboflow's recommendation
+  flags coca-diet's severe imbalance explicitly: 1 test instance against a
+  30-instance minimum-count recommendation, median class count 3.
+- This is the direct, quantified consequence of the raw annotation counts
+  already known going in (coca-classic:250, coca-zero:40, coca-diet:10) —
+  diet's near-total absence from the eval isn't a modeling surprise, it's
+  10 source images not being enough to survive a train/valid/test split.
+
+### Cross-cutting takeaway for the report
+Every brand-routing decision (the `aystro-brand-classifier` step everything
+else depends on) is at or near 100% for the brands with real photography.
+Every variant/flavor classifier's weak spot traces to a *named, countable*
+data gap — glass packaging (3 instances), Coca-Cola Diet (10 source images),
+Cappy's six thin flavors, XL's two thin variants — not to a modeling or
+architecture failure. That is a defensible, evidence-backed thesis for the
+report's limitations/future-work section, and now has real numbers behind it
+instead of the "Roboflow hasn't recorded a metric yet" placeholder that was
+there before.
