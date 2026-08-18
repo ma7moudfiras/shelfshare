@@ -1,3 +1,4 @@
+import 'brand_share_of_shelf.dart' show brandRootOf;
 import 'detection.dart';
 
 /// One class's slice of the shelf.
@@ -29,6 +30,37 @@ class ClassShare {
 
   @override
   String toString() => 'ClassShare($label, count: $count)';
+}
+
+/// One brand's [shares] grouped together: a heading share of the whole shelf,
+/// plus the variants (`coca-cola-slim`, `fanta-orange`, ...) that rolled up
+/// into it -- a brand with no finer-grained variant yet still gets a single
+/// variant entry equal to itself, so the UI never has to special-case "no
+/// breakdown yet".
+class BrandGroup {
+  /// The brand root, e.g. `coca-cola`.
+  final String brand;
+
+  /// This brand's portion of the *whole shelf*, 0.0 - 1.0 -- the sum of its
+  /// variants' own shelf-wide fractions.
+  final double fraction;
+
+  final int count;
+
+  /// Always non-empty. Each entry's [ClassShare.fraction] is still relative
+  /// to the whole shelf, not to this brand -- divide by [fraction] to get a
+  /// variant's share *within* the brand.
+  final List<ClassShare> variants;
+
+  const BrandGroup({
+    required this.brand,
+    required this.fraction,
+    required this.count,
+    required this.variants,
+  });
+
+  /// [fraction] expressed as 0 - 100.
+  double get percentage => fraction * 100;
 }
 
 /// Share of Shelf: how much of the detected shelf area each brand occupies.
@@ -110,6 +142,34 @@ class ShareOfShelf {
   /// Single-line breakdown, e.g. `coca_cola: 65% | pepsi: 35%`.
   String get summaryLine =>
       isEmpty ? 'No products detected' : shares.map((s) => s.label).join(' | ');
+
+  /// [shares] rolled up by brand, e.g. `coca-cola`, `coca-cola-slim` and
+  /// `coca-cola-standard` become one `coca-cola` group with those three as
+  /// its variants. Ordered largest brand first, same tie-break as [shares].
+  List<BrandGroup> get groupedByBrand {
+    final byBrand = <String, List<ClassShare>>{};
+    for (final share in shares) {
+      byBrand.putIfAbsent(brandRootOf(share.className), () => []).add(share);
+    }
+
+    return byBrand.entries.map((entry) {
+        final variants = entry.value
+          ..sort((a, b) {
+            final byArea = b.area.compareTo(a.area);
+            return byArea != 0 ? byArea : a.className.compareTo(b.className);
+          });
+        return BrandGroup(
+          brand: entry.key,
+          fraction: variants.fold(0.0, (sum, v) => sum + v.fraction),
+          count: variants.fold(0, (sum, v) => sum + v.count),
+          variants: variants,
+        );
+      }).toList()
+      ..sort((a, b) {
+        final byFraction = b.fraction.compareTo(a.fraction);
+        return byFraction != 0 ? byFraction : a.brand.compareTo(b.brand);
+      });
+  }
 
   @override
   String toString() => 'ShareOfShelf($summaryLine)';
