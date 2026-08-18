@@ -94,12 +94,24 @@ the report, and `CLAUDE.md` for Roboflow project-naming conventions.
 
 ## Phase 1 — Cappy flavor classifier
 
-- [ ] Visual audit of existing captured Cappy images: how much of the
-  confirmed real-world diversity is actually present in current data.
-- [ ] Contact-sheet label by flavor, create project, upload, train,
-  evaluate.
-- [ ] If existing data is too thin/undiverse: flag for targeted photography
-  (folds into Phase 2).
+- [x] Visual audit of existing captured Cappy images (2026-08-18): real,
+  separable diversity found, closer to Fanta's case than Coca-Cola's. Of
+  250/302 crops (52 URLs failed to download, not investigated further):
+  cappy-mix/orange ~181 (73%), cappy-pomegranate ~36 (14%), cappy-grape
+  ~32 (13%). One image was a mislabeled Fanta bottle contaminating the
+  `cappy` class in `aystro-brand-classifier` — excluded, not fixed at
+  the source yet (flag for a future small cleanup).
+- [x] Contact-sheet label by flavor, create project, upload (2026-08-18):
+  new project `aystro-cappy-classifier`, 249 images uploaded and labeled
+  into the 3 classes above (3-class split verified live via
+  `images_search`: 181/36/32, no drift). **Not trained** — user wants to
+  manually review the labels in the Roboflow UI first before committing
+  to a training run, unlike Fanta/XL Energy where labeling and training
+  happened in the same session.
+- [ ] Train, evaluate, and (per the Phase 3.5 routed pattern) wire into
+  `aystro-detect-classify` as a third gated variant classifier
+  (`route_cappy` + `first_non_empty_or_default`) — blocked on the
+  manual label review above, not on data or engineering effort.
 
 ## Phase 2 — field photography (owned by the user/field team; the real
 ## bottleneck — everything below depends on this, start it early)
