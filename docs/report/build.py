@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Build the Aystro field training report as DOCX (English and Arabic)."""
+"""Build the Aystro research report as DOCX (English and Arabic)."""
 
 import os
 import docx
@@ -321,9 +321,9 @@ def main():
 
     jobs = [
         ("en", content_en, False, "Times New Roman", "Times New Roman",
-         "Times New Roman", "Aystro_Field_Training_Report_EN"),
+         "Times New Roman", "Aystro_Research_Report_EN"),
         ("ar", content_ar, True, "Times New Roman", "Noto Naskh Arabic",
-         "Times New Roman", "Aystro_Field_Training_Report_AR"),
+         "Times New Roman", "Aystro_Research_Report_AR"),
     ]
     wanted = {a.lower() for a in sys.argv[1:]}
     if wanted:
