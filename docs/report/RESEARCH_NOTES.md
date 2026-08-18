@@ -778,3 +778,60 @@ Fanta items split `can`/`plastic` matching the actual shelf), brand
 predictions unchanged. Not fused into the final classification label
 itself (that's Phase 4 in `ROADMAP_FULL_SKU.md`, not yet built) — this just
 makes the signal available as a separate field, which is what was asked for.
+
+## 2026-08-18 — Cappy classifier wired live; confidence-gated active learning
+turned on; Supabase "mine existing corrections" plan abandoned (data doesn't
+exist)
+
+**Cappy wired.** `aystro-cappy-classifier/1` (trained same session, 12-class
+real flavor taxonomy the user relabeled by hand — see `ROADMAP_FULL_SKU.md`
+Phase 1) added to `aystro-detect-classify` via the same `switch_case` +
+`first_non_empty_or_default` pattern already proven for Fanta/XL Energy.
+Verified live: Cappy crops now resolve to real flavors (`cappy-orange`,
+`cappy-mango`, `cappy-lemon` all observed on the standard test photo, at
+0.59-0.80 confidence) instead of falling through to a generic bucket. All
+other branches (Fanta, XL, packaging, Sprite/Coca-Cola via the general
+classifier) byte-identical to the pre-change baseline — no regression.
+
+**Active learning added and enabled.** Added confidence-gated
+active-learning sinks to all four variant branches (Fanta, XL Energy, Cappy,
+packaging): extract confidence -> `continue_if` (only when confidence < 0.75)
+-> `roboflow_dataset_upload@v2` with `persist_predictions: false` (crop
+uploads unlabeled, a human must label it — nothing trains on the model's own
+guess unreviewed, directly addressing the "AL degrades itself over time"
+risk the user raised) and `data_percentage: 50` (samples half of the
+low-confidence crops, not all, to bound cost). Gated behind a new
+`disable_variant_active_learning` workflow parameter. Pushed live once with
+the parameter defaulting to `true` (off, so the wiring could be verified
+inert first), then flipped to default `false` (on) once the user confirmed —
+both pushes verified live via `workflows_run` against the standard test
+photo, output unregressed both times. This is now the live, primary
+mechanism for turning real field photos into future training data.
+
+**Supabase "mine existing corrections" — investigated and abandoned, not
+just deferred.** The plan (approved earlier this session as the "free/fast"
+first step, before the AL discussion) was to backfill classifier training
+data from `detections` rows where a rep corrected the model. Checked the
+real data before building anything: `captures.image_path` is `NULL` on
+100% of rows (15/15 captures), not just the corrected ones. Traced to
+`lib/services/roboflow_service.dart:82`, which documents the actual
+architecture: captured photos are sent to Roboflow as base64 at capture
+time and never uploaded to any Supabase-side storage — there is no cloud
+copy of the original image at all, ever, for any capture. Separately,
+`detections.original_class` (the column that would flag "a rep actually
+reclassified this box") is `NULL` on all 543 rows — the reclassify-existing-
+detection code path (`lib/models/capture_draft.dart`, `wasReclassified`)
+exists and is wired to write it correctly, but no rep has used it yet in
+practice (8 rows have `origin='manual'`, but those are manually added
+boxes, not corrections to model boxes).
+
+Net: there was never a "free" data source to mine here — both preconditions
+(a stored image to crop, and a real correction to label it with) are absent
+today. Raised with the user directly rather than either building against
+non-existent data or silently dropping the approved plan. Decision: do not
+add Supabase Storage image persistence for this purpose — rely on the new
+active-learning sink instead, which needs no app changes and is already
+live. If this decision is ever revisited, the two blockers above are
+exactly what would need fixing first (add a Storage upload call to
+`visit_service.dart`'s `recordCapture`, and confirm reps actually start
+using the reclassify UI once the app change ships).
