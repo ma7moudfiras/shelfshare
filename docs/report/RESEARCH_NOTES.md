@@ -835,3 +835,40 @@ live. If this decision is ever revisited, the two blockers above are
 exactly what would need fixing first (add a Storage upload call to
 `visit_service.dart`'s `recordCapture`, and confirm reps actually start
 using the reclassify UI once the app change ships).
+
+## 2026-08-18 (later) — Fixed "Cappy returns unclassified 0%" (systemic classifier
+confidence-threshold bug, not Cappy-specific)
+
+User reported Cappy sometimes returns `unclassified` at 0% confidence in the app.
+Reproduced live and root-caused via a debug spec (`workflow_specs_run` with extra
+outputs exposing each branch's raw predictions, never touching production):
+
+- `brand_general` (the routing classifier) correctly identified all affected crops
+  as `cappy` at 0.83-0.85 confidence, so routing itself was never the problem.
+- `aystro-cappy-classifier/1` (`brand_cappy`) returned a **literal empty predictions
+  list** (`predictions: [], top: "", confidence: 0`) for several of those same crops
+  — not a wrong guess, no guess at all.
+- Every `roboflow_classification_model@v3` step in this workflow was left on
+  `confidence_mode: "default"` (Roboflow's own built-in per-model threshold,
+  never explicitly set). Below that threshold the block returns nothing.
+- That empty result then broke `merge_brands`'s `first_non_empty_or_default`
+  fallback chain: it treats a present-but-empty string as "already answered" and
+  never falls through to `extract_general.output`'s valid `"cappy"` — so the
+  final label collapses to the `unclassified` default. Confirmed this same
+  failure mode already existed for the general classifier itself on one crop
+  in the same test photo (independent of Cappy).
+
+**Fix**: set `confidence_mode: "custom"`, `custom_confidence: 0` on all five
+classification steps (`brand_general`, `brand_fanta`, `brand_xlenergy`,
+`brand_cappy`, `packaging`) so each always returns its top-1 guess — never an
+empty result. Real confidence is unaffected (still read separately via
+`top_class_confidence` for the active-learning gate added earlier today), so a
+genuinely uncertain guess now surfaces as e.g. `cappy-pomegranate` at 0.22
+confidence instead of vanishing — which is exactly what the AL gate (<0.75) is
+built to catch and route for human review, rather than silently dropping the
+detection to `unclassified`/0%.
+
+Verified the fix against the debug spec first (all 8 previously-empty Cappy
+crops now return a flavor guess), then pushed to the live workflow and
+re-verified with `workflows_run`: the same test photo now returns zero
+`unclassified` detections anywhere in the output.
