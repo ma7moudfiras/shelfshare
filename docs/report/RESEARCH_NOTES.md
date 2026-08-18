@@ -214,6 +214,44 @@ Application" section.
 *Log new findings below this line, newest first, with a date and enough
 context to write up later.*
 
+## 2026-08-17 (later still) — "800 unmigrated images" claim was wrong; real
+## recall-gap suspect is a tiling difference, not missing data
+
+Before starting the migration task, checked the premise directly instead of
+trusting the earlier note. `images_search(in_dataset=true)` on both
+`aystro-project` and `aystro-project-v2` returns **227 for both**, with the
+same first image id (`1qoo248N2fnqVWTovAbs`) — the two projects share the
+exact same current raw image pool. There is no migration to do; §1's
+"~800 already-annotated images never migrated" claim (and the mirrored
+claims in both report editions) is incorrect as of today. Checked Trash for
+a bulk-delete event that might explain v20's 1191-image snapshot shrinking
+back to 227 raw — found none relevant (the trashed items are unrelated
+projects/versions). Likely explanation: v20's 1191 figure already included
+augmentation/tiling multiplication at generation time, not a raw count that
+later shrank — see below.
+
+**Real, verified difference, from `versions_get` on both versions:**
+
+| | `aystro-project` v20 | `aystro-project-v2` v2 |
+|---|---|---|
+| `preprocessing.tile` | **2×2** | none |
+| `preprocessing.static-crop` | center 50%×50% | none |
+| `augmentation` | flip (horizontal) + rotate 15°, 2 versions | blur 0.5px + exposure ±10%, 2 versions |
+
+v20 tiles every source image into a 2×2 grid before training — a technique
+specifically known to help detect small, densely-packed objects (exactly
+this domain: many small products tightly packed in one shelf photo) by
+increasing each object's relative size in what the model actually sees.
+v2 has no tiling at all. This is a directly testable, mechanistic
+explanation for the 4.7-point recall gap (81.1% vs 85.8%), unlike the old
+"missing data" story. **Not yet tested** — the fix would be generating a
+new `aystro-project-v2` version with 2×2 tiling matching v20 and
+retraining (~45 min), then comparing recall before swapping it into
+production. User declined to run this now (2026-08-17); logged as the
+first item in the report's next-steps section instead. Both report
+editions' §6.1/§9/§10 wording were corrected to describe this real,
+verified finding instead of the retracted "unmigrated images" story.
+
 ## 2026-08-16 (later) — Bulk-write permission prompts: root cause found
 
 Resuming the packaging-material labeling (~1470 remaining `annotations_save`
