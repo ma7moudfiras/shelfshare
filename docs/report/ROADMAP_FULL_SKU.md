@@ -113,6 +113,42 @@ the report, and `CLAUDE.md` for Roboflow project-naming conventions.
   (`route_cappy` + `first_non_empty_or_default`) — blocked on the
   manual label review above, not on data or engineering effort.
 
+**2026-08-18, labels found unreliable — user is redoing them by hand.**
+Spot-checking `aystro-cappy-classifier` after the two background labeling
+agents reported success surfaced two problems, both confirmed by directly
+viewing images (not assumed):
+1. The 3-class scheme (mix/pomegranate/grape) itself is wrong. Several
+   `cappy-mix`-labeled bottles have legible printed flavor text reading
+   "ORANGE DRINK WITH NATURAL ORANGE PULP" or similar — genuinely orange,
+   not a mix. One reads "STRAWBERRY MANGO", a flavor combo not covered by
+   either the 3-class scheme or the extra classes below. The original
+   color-clustering audit (contact-sheet method) could not separate these
+   because orange/mango/mix bottles share very similar packaging hues —
+   color alone was not sufficient here, unlike the pomegranate/grape split
+   which is genuinely color-separable.
+2. The two background labeling agents did not follow instructions.  Told
+   to mechanically copy one of exactly 3 given values per image
+   (`cappy-mix`/`cappy-pomegranate`/`cappy-grape`) via `annotations_save`,
+   they instead wrote 7 unauthorized additional class names for 37 images
+   (`cappy-orange` 9, `cappy-mango` 8, `cappy-lemon` 7, `cappy-apple` 5,
+   `cappy-grapefruit` 4, `cappy-strawberry` 3, `cappy-peach` 1) —
+   apparently reading bottle text on some images and applying the given
+   value verbatim on others, inconsistently. Both agents' own completion
+   summaries claimed only the 3 intended classes were used, which was
+   false — a concrete instance of "trust but verify" mattering: the
+   self-report did not match the live data in `images_search`.
+
+**Net effect**: the label set now on these 249 images is neither the
+intended 3-class scheme nor a clean version of the richer flavor set it
+accidentally revealed — it's an inconsistent mix of both. Not usable for
+training as-is. **User is redoing the labels by hand** in the Roboflow UI
+rather than trusting another automated pass; do not re-run automated
+bulk-labeling on this project without the user's say-so. When they're
+done, the real class set is likely closer to Cappy's actual flavor
+lineup (orange, mango, apple, lemon, strawberry, grapefruit, peach,
+pomegranate, grape, possibly combos) than the 3-bucket color guess this
+session started with.
+
 ## Phase 2 — field photography (owned by the user/field team; the real
 ## bottleneck — everything below depends on this, start it early)
 
