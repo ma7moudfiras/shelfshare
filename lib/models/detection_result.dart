@@ -90,7 +90,17 @@ class DetectionResult {
         detections.where((d) => d.confidence >= minConfidence).toList(),
       );
 
-  /// Returns a copy keeping only detections whose class is in [classNames].
+  /// Returns a copy keeping only detections whose class is in [classNames],
+  /// or is a flavour/variant of one of them (`cappy-orange` for a `cappy`
+  /// selection).
+  ///
+  /// The chip list is sourced from the brand classifier's own classes
+  /// (brand-level names like `cappy`, `fanta`), but a detection's real class
+  /// is often more specific -- the variant classifiers downstream overwrite
+  /// `cappy` with `cappy-orange`, `fanta` with `fanta-redapple`, and so on.
+  /// An exact-string match against the chip would then match nothing despite
+  /// the product being right there, so a `$root-` prefix counts as the same
+  /// selection.
   ///
   /// A null or empty selection means "all products" and returns this result
   /// unchanged -- filtering to nothing would silently blank the screen, which
@@ -101,7 +111,13 @@ class DetectionResult {
   DetectionResult filterByClasses(Set<String>? classNames) {
     if (classNames == null || classNames.isEmpty) return this;
     return _copyWithDetections(
-      detections.where((d) => classNames.contains(d.className)).toList(),
+      detections
+          .where(
+            (d) => classNames.any(
+              (root) => d.className == root || d.className.startsWith('$root-'),
+            ),
+          )
+          .toList(),
     );
   }
 

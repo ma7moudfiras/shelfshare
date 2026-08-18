@@ -954,3 +954,74 @@ wire `brand_coca` into `aystro-detect-classify` via `switch_case` on the
 general classifier's `coca-cola` value, same pattern as
 fanta/xlenergy/cappy, plus a confidence-gated active-learning sink
 matching the other four branches.
+
+## 2026-08-18 (later still) — Coca-Cola variant classifier wired (user-trained);
+AL sinks reworked to always-upload; two app-side fixes
+
+**Coca-Cola.** Blocked on Roboflow training credits via the API (see prior
+entry). User trained `aystro-coca-classifier` version 1 directly in the
+Roboflow UI (`coca-classic`/`coca-zero`/`coca-diet`, 780 images after
+augmentation) — bypassing the API credit limit. Verified the model directly
+before wiring: a classic red Coca-Cola crop scored 96% `coca-classic`; a
+genuine Coca-Cola Zero test photo leaned only 77%/18% classic/zero (still
+wrong, but visibly less confident, consistent with only 40 zero-labelled
+images — expected to improve as the new active-learning sink collects more).
+Wired `brand_coca` into `aystro-detect-classify` via the same
+`switch_case` (`"coca-cola"` case, matching the general classifier's own
+brand label) + `first_non_empty_or_default` pattern as fanta/xl/cappy.
+Verified live: every Coca-Cola detection on the standard test photo now
+reads `coca-classic` at 96-98% confidence; no regression elsewhere.
+
+**Active-learning sinks reworked — confidence gate removed.** User reported
+Cappy's AL sink fires on nearly every test while Fanta/XL fired once each
+total, despite real detection errors they wanted to capture. Root cause:
+the `confidence < 0.75` gate structurally can never catch a *confidently
+wrong* prediction (exactly what the "Unlabeled" bug from earlier today
+was — 98% confidence, wrong class) — it only catches genuine uncertainty,
+and Fanta/XL are now confident enough (~98%+ after their fixes) that they
+almost never dip below the threshold. Removed the confidence-based
+`continue_if` gate on all five branches (fanta/xlenergy/cappy/packaging/
+coca) and `data_percentage` raised 50 -> 100, so every crop actually routed
+to a given variant branch now gets uploaded for review, regardless of how
+confident the model was. Replaced the gate with a route-membership check
+(`extract_X.output != ""`) so each branch's sink still only receives crops
+that branch actually classified — without this, removing the confidence
+gate naively would have uploaded every crop in every photo to every
+branch's project indiscriminately. This is a real, intentional increase in
+upload volume (and therefore Roboflow usage) — the tradeoff the user
+explicitly asked for during this active correction/data-collection phase.
+Verified live: predictions byte-identical to before the change (the rework
+only touches the upload side-effects, not classification).
+
+**Two app-side fixes**, both root-caused from the same conversation:
+
+- `AnalysisSettings.defaultConfidence` (`lib/widgets/analysis_settings_sheet.dart`)
+  lowered from 0.7 to 0.4. The 0.7 floor was hiding real, correctly-classified
+  but lower-confidence detections (e.g. the new Cappy flavors, which range
+  22-80% confidence) from the rep's screen entirely — they can't correct
+  what they never see. Comment updated to record the tradeoff and that it's
+  a temporary stance for the active-correction phase.
+- `DetectionResult.filterByClasses` (`lib/models/detection_result.dart`) was
+  doing exact-string matching against the "Products" filter chips, but the
+  chip list is sourced from `aystro-brand-classifier`'s brand-level names
+  (`cappy`, `fanta`, ...) while real detections are now flavour-level
+  (`cappy-orange`, `fanta-redapple`, ...) thanks to this session's variant-
+  classifier work — so selecting the `cappy` chip matched zero detections
+  even with real Cappy bottles on screen, exactly as reported. Fixed to also
+  match on a `$root-` prefix, mirroring the same pattern
+  `brand_share_of_shelf.dart`'s `_brandRootOf` already uses for Share of
+  Shelf grouping.
+
+**Known follow-up, not fixed (out of scope for this pass, kept simple per
+user's request):** the Coca-Cola chip specifically is still a dead end even
+after the prefix fix — the chip is labelled `coca-cola` (from the brand
+classifier) but the real classes are `coca-classic`/`coca-zero`/`coca-diet`,
+which don't share that prefix (`coca-` vs `coca-cola-`), and
+`brand_share_of_shelf.dart`'s `_knownBrandRoots` has the same mismatch for
+Share-of-Shelf grouping. XL Energy already had this same root/prefix
+mismatch before today (`xl_energy` vs `xl-*`) — this is a pre-existing
+pattern, not something introduced today, and is a case of the deeper "chip
+source project only knows brand-level names" issue noted earlier in this
+session, not the specific bug reported. Worth a real fix later (aggregate
+the chip list across the variant-classifier projects, or add
+`coca`/`xl` root aliases), just not bundled into this pass.
