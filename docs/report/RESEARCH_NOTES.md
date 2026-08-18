@@ -930,3 +930,27 @@ class (only 27 images). Worth properly labeling them by flavor and folding
 into a future version — same "contact sheet + background agent" pattern
 used for Cappy — rather than just excluding them as done here for the
 immediate hotfix.
+
+## 2026-08-18 (later still) — Coca-Cola variant classifier staged, blocked on
+training credits
+
+Per the confirmed Coca-Cola Zero gap logged earlier, the user manually
+annotated `aystro-coca-classifier` (300 images: coca-classic 250,
+coca-zero 40, coca-diet 10 at annotation time). Rebalanced splits
+(210/60/30) and generated a clean version 2 (verified via the export
+response: only the 3 real classes in the project's color palette, no
+repeat of the "Unlabeled" contamination hit on the Fanta project earlier
+today). `trainings_create` then failed:
+`insufficient_train_credits` — "this workspace does not have enough
+credits to train." This is the same underlying constraint as task #9
+(Roboflow plan upgrade, blocked on owner decision) in the roadmap, now
+concretely blocking a ready-to-train model rather than a hypothetical
+future one.
+
+**Everything is staged and ready** — the moment credits are available
+(top-up, plan upgrade, or monthly reset), run: `trainings_create` on
+`aystro-coca-classifier` version 2 (`vit-base-patch16-224-in21k`), then
+wire `brand_coca` into `aystro-detect-classify` via `switch_case` on the
+general classifier's `coca-cola` value, same pattern as
+fanta/xlenergy/cappy, plus a confidence-gated active-learning sink
+matching the other four branches.
