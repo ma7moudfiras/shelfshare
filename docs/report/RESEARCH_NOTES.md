@@ -214,6 +214,33 @@ Application" section.
 *Log new findings below this line, newest first, with a date and enough
 context to write up later.*
 
+## 2026-08-18 — Per-product inference cost: likely a non-issue, needs one
+## dashboard check to close
+
+Asked Roboflow's own `agent_chat` directly (not assumed, not searched
+independently — this is the agent's answer, moderate confidence, could not
+pull the exact billing doc): serverless Workflow inference is billed **per
+workflow execution (per API call to the workflow), not per internal
+model/block step**. A single image that triggers 1 detector + up to 3
+classifiers inside one Workflow run is ~1 billed inference, not 4+. The
+app (`api/detect.js`) already sends exactly one request per captured
+photo regardless of how many products are on the shelf.
+
+If this holds, the "cost per detected product" worry flagged repeatedly in
+earlier report drafts was based on a wrong mental model: shelf density
+affects **wall-clock latency** (already measured precisely: 14.20s for a
+60-product photo, §6.2/§6.3 of the Arabic report) but not **credit/dollar
+cost**, since the whole workflow run is one billed unit either way.
+
+**Not fully closed**: the agent explicitly said to confirm from the
+workspace's real "Pricing & Credits" / usage dashboard
+(`app.roboflow.com/{workspace}/settings/usage`) for the authoritative
+number — that page is not reachable via any MCP tool in this session.
+Treat this as "very likely correct, one dashboard glance from fully
+confirmed" rather than fully verified. Report wording updated to reflect
+this (§6.3, §9 risk 6, §10) rather than leaving the old "not yet measured,
+could be expensive" framing, which was speculative in the wrong direction.
+
 ## 2026-08-17 (later still) — "800 unmigrated images" claim was wrong; real
 ## recall-gap suspect is a tiling difference, not missing data
 
