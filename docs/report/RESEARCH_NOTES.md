@@ -872,3 +872,61 @@ Verified the fix against the debug spec first (all 8 previously-empty Cappy
 crops now return a flavor guess), then pushed to the live workflow and
 re-verified with `workflows_run`: the same test photo now returns zero
 `unclassified` detections anywhere in the output.
+
+## 2026-08-18 (later still) — Real production bug: "Unlabeled" bogus class in
+aystro-fanta-classifier; Coca-Cola Zero data gap confirmed (not yet fixed)
+
+**Investigated a second user report** ("cappy gives unclassified... and some
+Coca-Cola cans") separately from the confidence-threshold fix above.
+
+**Coca-Cola Zero — confirmed real gap, not yet fixed.** Sampled 30 real
+training images from `aystro-brand-classifier`'s "coca-cola" class: 100%
+classic red Coca-Cola, zero Zero-variant examples. Pulled a genuine
+Coca-Cola Zero photo from a public Roboflow Universe dataset and ran it
+through our classifier: correctly identified as `coca-cola` but at only
+0.58 confidence vs 0.71-0.81 for classic red — the model recognizes it via
+the shared red script logo but is under-confident since it's never seen
+this variant. Same underlying pattern as the Sprite-can gap fixed earlier
+this session, just not severe enough yet to misfire on the one image
+tested. Not fixed this session — needs the same treatment as Sprite (mine
+or source real Zero examples, retrain).
+
+**The actual root cause of the user's live screenshot — "Unlabeled" at
+65%, not a Coca-Cola issue at all.** The user sent a real screenshot from
+the app showing a box labeled `Unlabeled 65%` next to correctly-labeled
+Coca-Cola/Fanta cans. Traced it precisely: the general brand classifier
+correctly said "fanta" (84% confidence) for that crop, which routed to
+`aystro-fanta-classifier` — and that model confidently (98%!) returned a
+literal class named `"Unlabeled"` instead of a real flavor.
+
+Root cause: `aystro-fanta-classifier` has 311 real, valid Fanta photos
+sitting **unannotated** in the project (visually confirmed several — all
+genuine Fanta-orange bottles/cans, not junk). The currently-deployed
+trained version (v4) had somehow swept these in as a literal 4th class
+called "Unlabeled" at generation time (visible in the project's own
+color-palette metadata: `"Unlabeled":"#FF8000"` alongside a similarly
+orphaned generic `"fanta"` color entry — both leftover from some earlier,
+different annotation state, frozen into the old version snapshot). The
+model then had two competing buckets for the same visual concept and
+sometimes picked the wrong (bogus) one, at very high confidence — this
+was never caught by the earlier confidence-threshold fix because the
+prediction wasn't low-confidence, it was a *wrong* class with high
+confidence.
+
+**Fix**: regenerated a clean version (`aystro-fanta-classifier/5`, 299
+images, only the 3 real flavor classes, no bogus class), retrained
+(`vit-base-patch16-224-in21k`, training id `cafe4f237ea92deabe03`, ~3.3
+min), re-pointed the live workflow's `brand_fanta` step from `/4` to `/5`.
+Verified live: the exact detection that previously showed
+`Unlabeled 65%`/`98%` now shows `fanta-redapple` at 97.3%, and every other
+Fanta detection's confidence jumped from ~84% to 98-99% now that the model
+isn't splitting probability mass against a phantom duplicate class. No
+regressions on Cappy/Sprite/Coca-Cola/packaging.
+
+**Follow-up not yet done**: the 311 unannotated images are real, valuable
+Fanta data (mostly appear to be fanta-orange from a visual sample) that
+could meaningfully help the classifier, especially the thin fanta-grape
+class (only 27 images). Worth properly labeling them by flavor and folding
+into a future version — same "contact sheet + background agent" pattern
+used for Cappy — rather than just excluding them as done here for the
+immediate hotfix.
