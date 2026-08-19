@@ -229,7 +229,7 @@ SECTIONS = [
         "the packaging material. The essential architectural property is that "
         "the routing in Stage 3 decouples a classifier's execution from the "
         "mere availability of its input — which is what makes growth "
-        "independent of K, as Section 5.4 shows."),
+        "independent of K, as Section 5.5 shows."),
   ("p", "Note that the axes are independent by design: packaging material does "
         "not depend on brand, whereas variant does. This independence is what "
         "permits the size axis to be added later as a fourth layer without "
@@ -238,7 +238,7 @@ SECTIONS = [
         "the live workflow specification. The essential difference from "
         "conventional staged architectures is the routing steps (in orange): "
         "they decouple the execution of the variant classifiers from the mere "
-        "availability of their input, which is what Section 5.4 measures."),
+        "availability of their input, which is what Section 5.5 measures."),
  ]),
 
  ("5. Experimental results", [
@@ -362,15 +362,15 @@ SECTIONS = [
         "most starved. Nothing in this ordering departs from the ordering of "
         "data volume — which sets up the diagnosis in the section that "
         "follows."),
-  ("table", ["Class", "Precision", "Recall"], [
-      ["fanta", "100%", "100%"],
-      ["sprite", "100%", "100%"],
-      ["cappy", "100%", "85.7%"],
-      ["coca-cola", "100%", "80%"],
-      ["xl_energy", "100%", "80%"],
-      ["pepsi", "no test representation", "—"],
-   ], "The brand layer — the decision on which the routing of everything "
-      "downstream depends."),
+  ("table", ["Class", "Test instances", "Correct", "Recall"], [
+      ["xl_energy", "20", "16", "80.0%"],
+      ["cappy", "14", "12", "85.7%"],
+      ["coca-cola", "10", "8", "80.0%"],
+      ["fanta", "2", "2", "100%"],
+      ["sprite", "1", "1", "100%"],
+      ["pepsi", "0", "—", "—"],
+   ], "The brand layer at a 0.70 threshold. Precision is 100% for every "
+      "represented class. Total: 47 instances."),
   ("p", "Precision reached 100% for every brand with actual field photography "
         "behind it, even at the strict threshold. This is an architecturally "
         "decisive result: the decision on which everything downstream depends "
@@ -378,16 +378,15 @@ SECTIONS = [
         "is correct. No error in the later layers can therefore be attributed "
         "to misrouting, which is a necessary condition for any conclusion about "
         "those layers' performance to be valid."),
-  ("table", ["Classifier", "Strong classes", "Weak classes"], [
-      ["Fanta", "orange, redapple (100/100)", "grape (100/66.7)"],
-      ["Packaging", "can (94.3/94.3), plastic (93.3/95.5)", "glass (100/33.3)"],
-      ["XL Energy", "classic, red (100/100)",
-       "sugarfree (0/0), two unrepresented"],
-      ["Coca-Cola", "classic (100/100)", "zero (100/66.7), diet (0/0)"],
-      ["Cappy", "mango (100/100)",
-       "grape (100/75), orange (100/50), lemon (100/25), 8 at (0/0)"],
-   ], "Variant and packaging layers at a 0.70 threshold, as "
-      "(precision/recall)."),
+  ("table", ["Classifier", "Classes (instances: correct)", "Test total"], [
+      ["Fanta", "orange (12:12), redapple (3:3), grape (3:2)", "18"],
+      ["Packaging", "plastic (88:84), can (70:66), glass (3:1)", "161"],
+      ["XL Energy", "classic (24:24), red (4:4), sugarfree (1:0)", "29"],
+      ["Coca-Cola", "classic (26:26), zero (3:2), diet (1:0)", "30"],
+      ["Cappy", "orange (6:3), grape (4:3), lemon (4:1), mix (3:0), "
+                "apple (2:0), mango (2:2), peach (1:0), strawberry (1:0)", "23"],
+   ], "Variant and packaging layers at a 0.70 threshold. Classes with no test "
+      "representation are omitted."),
   ("p", "The fixed threshold exposes a distinction invisible at optimal "
         "thresholds, and it is among the most useful things this analysis "
         "produced: some weak classes are not wrong but merely unconfident. The "
@@ -404,14 +403,74 @@ SECTIONS = [
         "each class's own optimal threshold cannot separate the two — it shows "
         "both as succeeding or failing depending on the class — whereas reading "
         "performance across two thresholds can."),
-  ("p", "Analysis of these results reveals one consistent pattern: every weak "
-        "class corresponds to a small, countable number of samples — three test "
-        "instances for glass, five source images for coca-diet, and between one "
-        "and six instances for each of the weak Cappy classes. The confusion "
-        "matrices show the errors to be plausible confusions between visually "
-        "adjacent categories (lemon with mango, diet with classic) rather than "
-        "random scatter — which is what distinguishes a data shortfall from a "
-        "modelling deficiency, in a way that can be checked."),
+
+  ("h2", "5.4 How statistically reliable these figures are"),
+  ("p", "The figures above require an explicit caveat, and omitting it would "
+        "make the report misleading however carefully each number was measured: "
+        "the test splits are very small, and many of the 100% figures rest on "
+        "single instances."),
+  ("table", ["Class", "Correct/instances", "Recall", "95% interval"], [
+      ["sprite (brand)", "1/1", "100%", "20.7% – 100%"],
+      ["fanta (brand)", "2/2", "100%", "34.2% – 100%"],
+      ["cappy-mango", "2/2", "100%", "34.2% – 100%"],
+      ["fanta-redapple", "3/3", "100%", "43.8% – 100%"],
+      ["xl-red", "4/4", "100%", "51.0% – 100%"],
+      ["fanta-orange", "12/12", "100%", "75.7% – 100%"],
+      ["xl-classic", "24/24", "100%", "86.2% – 100%"],
+      ["coca-classic", "26/26", "100%", "87.1% – 100%"],
+   ], "Wilson 95% confidence intervals for classes scoring 100%. The same "
+      "number, carrying entirely different meanings."),
+  ("p", "The sprite class scores 100% on a single test image, and the true "
+        "interval for its performance runs from 20.7% to 100% — that is, the "
+        "number carries almost no information. By contrast xl-classic, on 24 "
+        "instances, has an interval of 86.2%–100%, which is a statement with "
+        "content. The two figures are identical on the page and fundamentally "
+        "different in substance, and nothing distinguishes them except the "
+        "instance count — which is why it is stated in every table above."),
+  ("p", "Small samples have a second effect, on the aggregate figures. The "
+        "platform computes a per-class average, so a class with 24 instances "
+        "counts equally with a class holding one. Weighting by instance count "
+        "gives a markedly different picture."),
+  ("table", ["Classifier", "Per-class average", "Per-instance average",
+             "Difference"], [
+      ["XL Energy", "66.7%", "96.6% (28/29)", "+29.9"],
+      ["Coca-Cola", "55.6%", "93.3% (28/30)", "+37.7"],
+      ["Packaging", "74.4%", "93.8% (151/161)", "+19.4"],
+      ["Fanta", "88.9%", "94.4% (17/18)", "+5.5"],
+      ["Cappy", "31.2%", "39.1% (9/23)", "+7.9"],
+      ["Brand", "89.1%", "83.0% (39/47)", "−6.1"],
+   ], "Recall computed both ways. The figures reported throughout this study "
+      "are the per-class average, which is the more conservative of the two."),
+  ("p", "XL's 66.7% is the clearest illustration of how fragile a per-class "
+        "average can be: it means “two classes out of three”, and one of "
+        "the three holds a single instance. Had that one image cleared the "
+        "threshold, the figure would read 100%. A number that swings by a third "
+        "on the strength of one image is volatility, not measurement. Set "
+        "against that, 28 of the 29 actual products in the test set were "
+        "classified correctly."),
+  ("p", "Both averages are valid, but they answer different questions. The "
+        "per-class average asks “how does the system handle the average "
+        "class?”, exposing and penalising data gaps; the per-instance "
+        "average asks “how does it handle the average product on a "
+        "shelf?”, which is what a client actually experiences. This study "
+        "reports the former because it is the more conservative, and states the "
+        "latter here so the former is not misread."),
+  ("p", "Inspecting the confusion matrices at this threshold reveals a striking "
+        "property: across the brand, Fanta, XL, Coca and Cappy classifiers "
+        "there is not a single confusion between one class and another in the "
+        "entire test set. Every error is an abstention — the model failed to "
+        "reach the threshold and stayed silent — rather than a misclassification. "
+        "In the brand layer, for instance: 47 instances, 39 correct, 8 "
+        "abstentions, zero confusions."),
+  ("p", "This property has direct operational value: the system does not call a "
+        "Coca-Cola a Sprite; it is either right or silent. An abstention is a "
+        "tractable error, referred to human review and corrected there, whereas "
+        "a confident misclassification propagates into the report without "
+        "arousing suspicion. The sole exception is the packaging classifier, "
+        "the only one that shows genuine confusion (can with plastic eight "
+        "times, glass to plastic twice) and never abstains — and also the only "
+        "one operating on a physical property rather than a commercial "
+        "identity."),
   ("fig", "fig_app_v2_variants", "The multi-stage architecture on a real Cappy "
         "shelf: labels here are at flavour level (orange / mango / grape / "
         "lemon / strawberry) rather than brand level — this is what the routed "
@@ -430,7 +489,7 @@ SECTIONS = [
         "collection of known cost, whereas an architectural deficiency requires "
         "redesign."),
 
-  ("h2", "5.4 Computational complexity"),
+  ("h2", "5.5 Computational complexity"),
   ("p", "In the unrouted design every variant classifier runs on every region, "
         "making the number of invocations O(N×K). On a test photograph "
         "containing 60 products, one brand's classifier ran on all sixty "
@@ -463,7 +522,7 @@ SECTIONS = [
         "classifier; the two stars are the actual measurements. Right: measured "
         "time on the same photograph before and after routing."),
 
-  ("h2", "5.5 Training cost and the marginal cost of growth"),
+  ("h2", "5.6 Training cost and the marginal cost of growth"),
   ("table", ["Model", "Training time", "Credits"], [
       ["Class-agnostic detector", "44.2 min", "1.47"],
       ["Packaging classifier", "8.2 min", "0.27"],
@@ -494,7 +553,7 @@ SECTIONS = [
   ("p", "It was also established that inference is billed per image submitted "
         "to the pipeline rather than per internal model invoked — meaning that "
         "shelf density costs time, not money, which is precisely what Section "
-        "5.4 measures."),
+        "5.5 measures."),
  ]),
 
  ("6. Active learning: a design result", [
@@ -586,21 +645,44 @@ SECTIONS = [
  ]),
 
  ("9. Limitations", [
-  ("b", "1. Measured data scarcity in specific categories. Every weakness in "
-        "Section 5.3 reduces to: coca-diet (5 source images, 0/0), glass "
-        "(3 test instances, 33.3% recall), six Cappy flavours, the two thin XL "
-        "variants, and pepsi (unrepresented in both the detector and the "
-        "classifier)."),
-  ("b", "2. The differing preprocessing pipelines of the two compared versions "
+  ("b", "1. The test splits are improperly small — the gravest limitation in "
+        "this study, and the one that precedes all others because it bears on "
+        "the reliability of every figure in it."),
+  ("table", ["Project", "Train", "Valid", "Test", "Test share"], [
+      ["Brand classifier", "1,534", "105", "47", "2.8%"],
+      ["Coca-Cola", "720", "30", "30", "3.8%"],
+      ["XL Energy", "612", "58", "29", "4.1%"],
+      ["Fanta", "238", "43", "18", "6.0%"],
+      ["Detector v2", "316", "34", "34", "8.9%"],
+      ["Cappy", "161", "46", "23", "10.0%"],
+   ], "Actual split proportions. The conventional test share is around 20%."),
+  ("p", "The consequence is that classes rich in data reached the test set with "
+        "one or two instances. The clearest example is sprite: the project holds "
+        "374 images of it, of which exactly one landed in the test split and 373 "
+        "in training. Its “100%” is therefore not a performance "
+        "certificate but an artefact of the split."),
+  ("b", "2. From this follows an essential distinction between two kinds of "
+        "weakness that had been conflated under the single description of "
+        "“data scarcity”:"),
+  ("p", "The first is a split deficiency rather than a data one: sprite, fanta "
+        "at brand level, xl-red. The data exists in full within the project, but "
+        "the split withheld it from the test set. The remedy needs no "
+        "photography and no new data — only regenerating a version with a "
+        "balanced split and retraining, a matter of minutes of computation, "
+        "currently blocked solely on the availability of training credits."),
+  ("p", "The second is genuine data scarcity: coca-diet (5 source images), glass "
+        "(25 images in the whole corpus, 3 of them in test), the thin Cappy "
+        "flavours, and pepsi (unrepresented in both the detector and the "
+        "classifier). No split and no retraining produces these; only field "
+        "photography does."),
+  ("p", "Conflating the two inflates the apparent size of the work outstanding: "
+        "a substantial part of what looks like a data gap is in fact a "
+        "procedural one, closable by a single retraining run."),
+  ("b", "3. The differing preprocessing pipelines of the two compared versions "
         "(Section 3.1). Its effect is mitigated by two things: the difference "
         "works against the stated conclusion, and the size-resolved comparison "
         "was dropped as invalid. Unifying the pipeline in a later evaluation "
         "would close this point definitively."),
-  ("b", "3. Small test splits. The detector's test split is 34 images and one "
-        "classifier's is 23 images across 12 classes — both below the platform's "
-        "own recommendation. The figures reported, while measured rather than "
-        "estimated, therefore carry statistical uncertainty inversely "
-        "proportional to sample size."),
   ("b", "4. Two independent splits. The projects generate their splits "
         "separately even though they share the source photographs, which "
         "weakens the comparison in principle."),
@@ -632,14 +714,26 @@ SECTIONS = [
 
  ("10. Future work and what is needed", [
   ("h2", "10.1 Requiring no external input"),
-  ("p", "First, an end-to-end evaluation on a manually labelled test set, to "
+  ("p", "First, and cheapest for the return: regenerating the six classifier "
+        "versions with a balanced split (70/20/10) and retraining them, closing "
+        "Limitation 1. The brand classifier alone would move from 47 test "
+        "instances to roughly 340, and sprite would gain dozens of instances "
+        "instead of one — turning the figures in Section 5.3 from suggestive "
+        "into statistically meaningful. The computational cost is about four "
+        "minutes per classifier, under half an hour for the whole set; the only "
+        "obstacle is the availability of training credits."),
+  ("p", "Next, an end-to-end evaluation on a manually labelled test set, to "
         "measure error accumulation across the chain (Limitation 5) — "
-        "scientifically the highest-priority item. Then re-evaluating both "
-        "detectors under a unified preprocessing pipeline, to close Limitation "
-        "2 definitively. Then harvesting the first batch of active-learning "
-        "data, reviewing it, and retraining on it — the first practical test of "
-        "whether the loop described in Section 6 closes. Then enlarging the "
-        "test splits to reduce statistical uncertainty."),
+        "scientifically the highest-priority item, and one that needs no credits "
+        "at all. Then re-evaluating both detectors under a unified preprocessing "
+        "pipeline, to close Limitation 3. Then harvesting the first batch of "
+        "active-learning data, reviewing it, and retraining on it — the first "
+        "practical test of whether the loop described in Section 6 closes."),
+  ("p", "Throughout the above, a stratified split guaranteeing each class a "
+        "minimum test share is preferable to the random splitting that produced "
+        "the situation described in Limitation 1 — because randomness applied to "
+        "an unbalanced set leaves small classes unrepresented by probability "
+        "alone."),
 
   ("h2", "10.2 The open axis: adding size to the compound label"),
   ("p", "The fourth and final axis of the target label (Section 2) is package "
