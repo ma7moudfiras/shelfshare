@@ -7,7 +7,7 @@
 /// Fanta flavour classifier use -- there is no single shared enum for it
 /// because each of those exists for a different reason, but the *names* have
 /// to agree for a report grouped by brand to make sense.
-const _knownBrandRoots = [
+const knownBrandRoots = [
   'coca-cola',
   'xl_energy',
   'sprite',
@@ -15,6 +15,18 @@ const _knownBrandRoots = [
   'pepsi',
   'cappy',
 ];
+
+/// Maps a raw class label to its parent brand root, e.g. `coca-cola-slim` and
+/// `fanta-orange` both fold to `coca-cola` and `fanta`. An unrecognised label
+/// (a fallback `unclassified`, or a variant classifier's own vocabulary that
+/// hasn't been added to [knownBrandRoots] yet) is its own one-item brand
+/// rather than silently disappearing into another one.
+String brandRootOf(String className) {
+  for (final root in knownBrandRoots) {
+    if (className == root || className.startsWith('$root-')) return root;
+  }
+  return className;
+}
 
 /// One finer-grained class's slice of a market's detections, within its
 /// parent brand.
@@ -102,7 +114,7 @@ class BrandShareOfShelf {
 
     final byBrand = <String, Map<String, int>>{};
     for (final entry in counts.entries) {
-      final brand = _brandRootOf(entry.key);
+      final brand = brandRootOf(entry.key);
       byBrand.putIfAbsent(brand, () => {})[entry.key] = entry.value;
     }
 
@@ -139,14 +151,5 @@ class BrandShareOfShelf {
           });
 
     return BrandShareOfShelf(brands: brands, totalCount: total);
-  }
-
-  static String _brandRootOf(String className) {
-    for (final root in _knownBrandRoots) {
-      if (className == root || className.startsWith('$root-')) return root;
-    }
-    // An unrecognised label (e.g. a fallback "unclassified") is its own
-    // one-item brand rather than silently disappearing into another one.
-    return className;
   }
 }

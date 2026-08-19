@@ -543,7 +543,13 @@ class _ShareOfShelfSection extends StatelessWidget {
                   ListTile(
                     dense: true,
                     title: Text(variant.className),
-                    trailing: Text('${variant.percentage.round()}%'),
+                    // variant.fraction is relative to the grand total, not
+                    // this brand -- divide by the brand's own fraction so
+                    // the rows read as "this variant's share of the brand"
+                    // and sum to 100% within one brand.
+                    trailing: Text(
+                      '${(variant.fraction / brand.fraction * 100).round()}%',
+                    ),
                   ),
               ],
             ),

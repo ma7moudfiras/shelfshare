@@ -69,14 +69,18 @@ class AppConfig {
 
   /// Workflow slug (not the workflow document id).
   ///
-  /// `aystro-detect-classify-brand` is a 3-stage pipeline: a class-agnostic
-  /// detector finds every product, each crop goes through a brand classifier,
-  /// then the classification is written back onto the detection. It declares
-  /// `detect_confidence`/`detect_model_id`/`brand_model_id` as its
-  /// parameters -- a different shape from a plain single-model workflow, see
+  /// `aystro-detect-classify` is a class-agnostic detector -> crop -> brand
+  /// classifier pipeline, with a Fanta-flavor classifier conditionally
+  /// routed in via `switch_case` when the brand classifier says "fanta". It
+  /// declares `detect_confidence`/`detect_model_id` as its parameters -- a
+  /// different shape from a plain single-model workflow, see
   /// [RoboflowParameters] in `roboflow_service.dart`.
+  ///
+  /// NOTE: this used to be named `aystro-detect-classify-brand`. That slug
+  /// is now a *different*, older, unmaintained workflow (no Fanta routing,
+  /// different output shape) -- do not revert to it.
   static String get workflowId =>
-      _read('ROBOFLOW_WORKFLOW_ID') ?? 'aystro-detect-classify-brand';
+      _read('ROBOFLOW_WORKFLOW_ID') ?? 'aystro-detect-classify';
 
   /// Inference host base URL.
   static String get baseUrl =>

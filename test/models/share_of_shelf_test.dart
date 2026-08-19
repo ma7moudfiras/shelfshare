@@ -91,6 +91,39 @@ void main() {
 
       expect(share.isEmpty, isTrue);
     });
+
+    test('groupedByBrand rolls variants up under their parent brand', () {
+      // coca-cola: 2x(10x10)=200, coca-cola-slim: 1x(10x10)=100 -> brand 300.
+      // sprite: 1x(10x10)=100, no variant of its own.
+      final share = ShareOfShelf.fromDetections([
+        detection('coca-cola', 10, 10),
+        detection('coca-cola', 10, 10),
+        detection('coca-cola-slim', 10, 10),
+        detection('sprite', 10, 10),
+      ]);
+
+      final groups = share.groupedByBrand;
+      expect(groups.map((g) => g.brand), ['coca-cola', 'sprite']);
+
+      final cocaCola = groups.first;
+      expect(cocaCola.percentage, closeTo(75, 0.001));
+      expect(cocaCola.count, 3);
+      expect(
+        cocaCola.variants.map((v) => v.className),
+        ['coca-cola', 'coca-cola-slim'],
+      );
+      // Within the brand: coca-cola is 200/300, coca-cola-slim is 100/300.
+      final cocaColaShare =
+          cocaCola.variants[0].fraction / cocaCola.fraction * 100;
+      final slimShare = cocaCola.variants[1].fraction / cocaCola.fraction * 100;
+      expect(cocaColaShare, closeTo(66.67, 0.01));
+      expect(slimShare, closeTo(33.33, 0.01));
+
+      // A brand with no finer variant still gets a single variant row.
+      final sprite = groups.last;
+      expect(sprite.variants, hasLength(1));
+      expect(sprite.variants.single.className, 'sprite');
+    });
   });
 
   group('BoundingBox', () {

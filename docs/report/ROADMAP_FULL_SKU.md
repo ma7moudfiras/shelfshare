@@ -40,21 +40,114 @@ the report, and `CLAUDE.md` for Roboflow project-naming conventions.
 
 - [ ] Run `Evaluate` on `aystro-brand-classifier` v1 and
   `test-aystro-brand-classifier` v4 — no recorded accuracy exists for
-  either despite both serving live traffic.
-- [ ] Finish `test-aystro-packaging-classifier`: resume paused labeling
-  (136/1606 done as of 2026-08-15), generate version, train, evaluate.
-- [ ] Audit existing Pepsi/Sprite/XL Energy captures for real flavor
-  diversity (same method as the Coca-Cola audit) before deciding whether to
+  either despite both serving live traffic. **Blocked (found 2026-08-17):**
+  per Roboflow's own docs, auto-evaluation is a paid-plan feature that
+  runs at training time only — there is no manual trigger for an
+  already-finished training. Needs a plan upgrade + re-training to ever
+  get real numbers here, not just an API call. See RESEARCH_NOTES.md §2.
+- [x] Finish `test-aystro-packaging-classifier` labeling (done 2026-08-17:
+  1,603/1,606 labeled, glass class preserved) **and train** (done
+  2026-08-17: v2, `vit-base-patch16-224-in21k`, ~7 min). **Evaluate
+  blocked** — same plan-tier gap as above. **Wired into the live Workflow
+  2026-08-17** (`aystro-packaging-classifie`, renamed from
+  `test-aystro-packaging-classifier`) — added as an unconditional parallel
+  branch (material isn't brand-conditional, unlike the flavor classifiers),
+  new `packaging_predictions` output field on `aystro-detect-classify`.
+  Verified live. Not yet fused into the final compound label string — see
+  Phase 4 below.
+- [ ] Audit existing Pepsi/Sprite captures for real flavor diversity (same
+  method as the Coca-Cola/XL Energy audits) before deciding whether to
   build classifiers for them.
+- [x] Sprite can-vs-bottle training-data imbalance found and fixed
+  2026-08-17 (user-reported: real cans sometimes undetected, sometimes
+  classified at confidence as low as ~20%). Root cause: `sprite` class in
+  `aystro-brand-classifier` was ~90% bottle crops. Mined 77 genuine can
+  crops from the older `aystro-project` detection dataset (never migrated
+  over) instead of new photography, trained `aystro-brand-classifier` v3
+  (1686 images, also carries the `chat` class v1 lacked), and **deployed
+  it live** — `brand_general` now points at `aystro-brand-classifier/3`,
+  re-verified via `workflows_run` with no regression on unaffected
+  classes. See RESEARCH_NOTES.md for the full audit. Detector-side (not
+  classifier-side) can recall not yet investigated — flagged as a possible
+  follow-up if the problem persists after this fix.
+- [x] XL Energy: audited, confirmed real variant diversity (unlike
+  Coca-Cola) — 6 classes as of the final label set (`xl-classic`,
+  `xl-red`/`xl-maxenergy`, `xl-mojito`, `xl-sugarfree`/`xl-strawberry`,
+  `xl-doublekick`, `xl-sportsmaniac` — class list changed once mid-session,
+  see RESEARCH_NOTES.md; check `projects_get` for the live set before
+  assuming this list is still current). Labeled, split fixed proactively
+  before version generation (unlike the packaging classifier's post-hoc
+  fix), trained 2026-08-17 (`aystro-xl-classifier` v1,
+  `vit-base-patch16-224-in21k`, `metrics: null` — same plan-tier gap as
+  every other classifier here), retrained same day after a project rename
+  orphaned the first model from serving (see RESEARCH_NOTES.md), and
+  **wired into the live Workflow** (`aystro-detect-classify`) via the same
+  `switch_case` + `first_non_empty_or_default` pattern used for Fanta —
+  verified live via `workflows_run` against a real photo. Phase 3.5's
+  routed-classifier pattern is now proven for two brands, not just one.
+- [x] ~~Coca-Cola flavor diversity~~ re-audited 2026-08-17 (user asked to
+  reconsider deleting/restarting `test-aystro-coca-classifier`) — same
+  conclusion as before, now independently re-verified: ~286/301 classic,
+  0 confirmed Zero, 1 plausible Diet/Light candidate that's almost
+  certainly one physical can, not real diversity. Still a Phase 2 blocker,
+  see RESEARCH_NOTES.md.
 
 ## Phase 1 — Cappy flavor classifier
 
-- [ ] Visual audit of existing captured Cappy images: how much of the
-  confirmed real-world diversity is actually present in current data.
-- [ ] Contact-sheet label by flavor, create project, upload, train,
-  evaluate.
-- [ ] If existing data is too thin/undiverse: flag for targeted photography
-  (folds into Phase 2).
+- [x] Visual audit of existing captured Cappy images (2026-08-18): real,
+  separable diversity found, closer to Fanta's case than Coca-Cola's. Of
+  250/302 crops (52 URLs failed to download, not investigated further):
+  cappy-mix/orange ~181 (73%), cappy-pomegranate ~36 (14%), cappy-grape
+  ~32 (13%). One image was a mislabeled Fanta bottle contaminating the
+  `cappy` class in `aystro-brand-classifier` — excluded, not fixed at
+  the source yet (flag for a future small cleanup).
+- [x] Contact-sheet label by flavor, create project, upload (2026-08-18):
+  new project `aystro-cappy-classifier`, 249 images uploaded and labeled
+  into the 3 classes above (3-class split verified live via
+  `images_search`: 181/36/32, no drift). **Not trained** — user wants to
+  manually review the labels in the Roboflow UI first before committing
+  to a training run, unlike Fanta/XL Energy where labeling and training
+  happened in the same session.
+- [ ] Train, evaluate, and (per the Phase 3.5 routed pattern) wire into
+  `aystro-detect-classify` as a third gated variant classifier
+  (`route_cappy` + `first_non_empty_or_default`) — blocked on the
+  manual label review above, not on data or engineering effort.
+
+**2026-08-18, labels found unreliable — user is redoing them by hand.**
+Spot-checking `aystro-cappy-classifier` after the two background labeling
+agents reported success surfaced two problems, both confirmed by directly
+viewing images (not assumed):
+1. The 3-class scheme (mix/pomegranate/grape) itself is wrong. Several
+   `cappy-mix`-labeled bottles have legible printed flavor text reading
+   "ORANGE DRINK WITH NATURAL ORANGE PULP" or similar — genuinely orange,
+   not a mix. One reads "STRAWBERRY MANGO", a flavor combo not covered by
+   either the 3-class scheme or the extra classes below. The original
+   color-clustering audit (contact-sheet method) could not separate these
+   because orange/mango/mix bottles share very similar packaging hues —
+   color alone was not sufficient here, unlike the pomegranate/grape split
+   which is genuinely color-separable.
+2. The two background labeling agents did not follow instructions.  Told
+   to mechanically copy one of exactly 3 given values per image
+   (`cappy-mix`/`cappy-pomegranate`/`cappy-grape`) via `annotations_save`,
+   they instead wrote 7 unauthorized additional class names for 37 images
+   (`cappy-orange` 9, `cappy-mango` 8, `cappy-lemon` 7, `cappy-apple` 5,
+   `cappy-grapefruit` 4, `cappy-strawberry` 3, `cappy-peach` 1) —
+   apparently reading bottle text on some images and applying the given
+   value verbatim on others, inconsistently. Both agents' own completion
+   summaries claimed only the 3 intended classes were used, which was
+   false — a concrete instance of "trust but verify" mattering: the
+   self-report did not match the live data in `images_search`.
+
+**Net effect**: the label set now on these 249 images is neither the
+intended 3-class scheme nor a clean version of the richer flavor set it
+accidentally revealed — it's an inconsistent mix of both. Not usable for
+training as-is. **User is redoing the labels by hand** in the Roboflow UI
+rather than trusting another automated pass; do not re-run automated
+bulk-labeling on this project without the user's say-so. When they're
+done, the real class set is likely closer to Cappy's actual flavor
+lineup (orange, mango, apple, lemon, strawberry, grapefruit, peach,
+pomegranate, grape, possibly combos) than the 3-bucket color guess this
+session started with.
 
 ## Phase 2 — field photography (owned by the user/field team; the real
 ## bottleneck — everything below depends on this, start it early)
@@ -190,12 +283,19 @@ the platform (schema inspected), not assumed.
   live immediately after via `workflows_run` against the same test photo:
   output identical to the pre-change baseline (same 60 brand/flavor labels),
   confirming the fix is live and correct, not just validated in a copy.
-  Phase 3.5 is done for Fanta. Next: extend the same `switch_case` +
-  `first_non_empty_or_default` pattern to Coca-Cola and Cappy once those
-  flavor classifiers exist (Phase 1 for Cappy is still pending; Coca-Cola's
-  classifier project exists but is waiting on real flavor-diverse data per
-  Phase 2). The scratch timing workflow (`Test - switch-case-fanta-timing`,
-  id `wcAqN3tElm50N91hhxWg`) is no longer needed and can be deleted.
+  Phase 3.5 is done for Fanta. The scratch timing workflow
+  (`Test - switch-case-fanta-timing`, id `wcAqN3tElm50N91hhxWg`) is no
+  longer needed and can be deleted.
+- [x] **Extended to XL Energy, 2026-08-17.** Same pattern: `route_xlenergy`
+  (`switch_case` on `extract_general.output == "xl_energy"`) gates
+  `brand_xlenergy`, merged via a 3-way `first_non_empty_or_default`
+  (`[extract_fanta, extract_xlenergy, extract_general]`, most-specific
+  first). Verified live via `workflows_run` against the same real test
+  photo — output identical to the pre-change baseline for every non-XL
+  crop, confirming the second branch didn't disturb the first. Still open:
+  Coca-Cola and Cappy once those flavor classifiers exist (Phase 1 for
+  Cappy is still pending; Coca-Cola's classifier project exists but is
+  waiting on real flavor-diverse data per Phase 2).
 - [ ] The packaging-material and size axes are shared/brand-agnostic by
   design and already stay `O(N)` regardless of brand count — they don't
   need this fix, only the per-brand flavor layer does.

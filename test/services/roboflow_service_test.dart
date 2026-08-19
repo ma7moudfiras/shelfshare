@@ -29,7 +29,7 @@ void main() {
       envString: '''
 ROBOFLOW_API_KEY=test_key
 ROBOFLOW_WORKSPACE=ma7mouds-workspace
-ROBOFLOW_WORKFLOW_ID=aystro-detect-classify-brand
+ROBOFLOW_WORKFLOW_ID=aystro-detect-classify
 ROBOFLOW_BASE_URL=https://serverless.roboflow.com
 ''',
     );
@@ -113,7 +113,7 @@ ROBOFLOW_BASE_URL=https://serverless.roboflow.com
       expect(request.method, 'POST');
       expect(
         request.url.toString(),
-        'https://serverless.roboflow.com/ma7mouds-workspace/workflows/aystro-detect-classify-brand',
+        'https://serverless.roboflow.com/ma7mouds-workspace/workflows/aystro-detect-classify',
       );
       expect(request.headers['Content-Type'], contains('application/json'));
 
@@ -134,8 +134,8 @@ ROBOFLOW_BASE_URL=https://serverless.roboflow.com
         reason: 'a top-level parameters block is silently ignored by Roboflow',
       );
       // Only detect_confidence/detect_model_id are sent -- there is no
-      // top-level model_id once the workflow runs two models, and
-      // brand_model_id has no per-call override.
+      // top-level model_id once the workflow runs multiple classification
+      // stages, and neither classifier is exposed as a runtime parameter.
       expect(
         (body['inputs'] as Map).keys,
         containsAll(['image', 'detect_confidence', 'detect_model_id']),
@@ -365,6 +365,144 @@ ROBOFLOW_MODEL_ID=aystro-project-v2/1
         expect(result.detections.single.confidence, closeTo(0.75, 1e-9));
       },
     );
+
+    test(
+      'a blank classifier label does not disable blending for every other '
+      'detection in the same photo',
+      () async {
+        // Regression test: the classifier occasionally returns an empty
+        // top_class for one ambiguous crop. Dropping that detection instead
+        // of keeping it under a fallback label used to shrink `predictions`
+        // relative to `raw_detections`, which silently disabled confidence
+        // blending for the *whole* photo -- every box read back at the
+        // classifier's raw (near-100%) confidence, not just the blank one.
+        final (service, _) = serviceReplaying(
+          jsonEncode({
+            'outputs': [
+              {
+                'predictions': {
+                  'image': {'width': 720, 'height': 540},
+                  'predictions': [
+                    {
+                      'x': 100.0,
+                      'y': 70.0,
+                      'width': 48.0,
+                      'height': 140.0,
+                      'confidence': 1.0,
+                      'class': '',
+                      'class_id': 0,
+                    },
+                    {
+                      'x': 624.0,
+                      'y': 70.0,
+                      'width': 48.0,
+                      'height': 140.0,
+                      'confidence': 1.0,
+                      'class': 'sprite',
+                      'class_id': 2,
+                    },
+                  ],
+                },
+                'raw_detections': {
+                  'image': {'width': 720, 'height': 540},
+                  'predictions': [
+                    {
+                      'x': 100.0,
+                      'y': 70.0,
+                      'width': 48.0,
+                      'height': 140.0,
+                      'confidence': 0.55,
+                      'class': 'product',
+                      'class_id': 0,
+                    },
+                    {
+                      'x': 624.0,
+                      'y': 70.0,
+                      'width': 48.0,
+                      'height': 140.0,
+                      'confidence': 0.21,
+                      'class': 'product',
+                      'class_id': 0,
+                    },
+                  ],
+                },
+              },
+            ],
+          }),
+        );
+
+        final result = await service.detectProducts(sampleBytes);
+
+        expect(result.count, 2);
+        expect(result.detections[0].className, 'unclassified');
+        expect(result.detections[0].confidence, closeTo(1.0 * 0.55, 1e-9));
+        expect(result.detections[1].className, 'sprite');
+        expect(result.detections[1].confidence, closeTo(1.0 * 0.21, 1e-9));
+      },
+    );
+  });
+
+  group('packaging merged onto detections', () {
+    test('attaches the packaging label from packaging_predictions', () async {
+      final (service, _) = serviceReplaying(
+        jsonEncode({
+          'outputs': [
+            {
+              'predictions': {
+                'image': {'width': 720, 'height': 540},
+                'predictions': [
+                  {
+                    'x': 624.0,
+                    'y': 70.0,
+                    'width': 48.0,
+                    'height': 140.0,
+                    'confidence': 0.9,
+                    'class': 'sprite',
+                    'class_id': 2,
+                  },
+                ],
+              },
+              'packaging_predictions': ['can'],
+            },
+          ],
+        }),
+      );
+
+      final result = await service.detectProducts(sampleBytes);
+
+      expect(result.detections.single.packaging, 'can');
+      expect(result.detections.single.displayLabel, contains('can'));
+    });
+
+    test('leaves packaging null when the list length disagrees', () async {
+      final (service, _) = serviceReplaying(
+        jsonEncode({
+          'outputs': [
+            {
+              'predictions': {
+                'image': {'width': 720, 'height': 540},
+                'predictions': [
+                  {
+                    'x': 624.0,
+                    'y': 70.0,
+                    'width': 48.0,
+                    'height': 140.0,
+                    'confidence': 0.9,
+                    'class': 'sprite',
+                    'class_id': 2,
+                  },
+                ],
+              },
+              'packaging_predictions': <Object>[],
+            },
+          ],
+        }),
+      );
+
+      final result = await service.detectProducts(sampleBytes);
+
+      expect(result.detections.single.packaging, isNull);
+    });
   });
 
   group('response envelopes', () {

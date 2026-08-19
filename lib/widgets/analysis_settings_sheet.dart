@@ -25,14 +25,16 @@ class AnalysisSettings {
     this.confidence = defaultConfidence,
   });
 
-  /// Deliberately stricter than the workflow's own 0.4.
+  /// Matches the workflow's own default (`detect_confidence` input).
   ///
-  /// A count that is reported to a customer should err towards missing a
-  /// genuine facing rather than inventing one: an under-count is visible to the
-  /// rep standing at the shelf and gets corrected, whereas a phantom detection
-  /// looks exactly like a real one and quietly inflates the number. 0.4 was
-  /// producing enough of the latter to make the totals hard to defend.
-  static const double defaultConfidence = 0.7;
+  /// Was 0.7, deliberately stricter, to keep phantom detections out of
+  /// customer-facing counts. Lowered during active data-collection: a rep
+  /// correcting detections needs to actually see the weaker ones (a class
+  /// with few training images often scores under 0.7) rather than have them
+  /// hidden before there's a chance to fix and re-upload them. Revisit this
+  /// once the variant classifiers have enough corrected data that raising it
+  /// back stops hiding real signal.
+  static const double defaultConfidence = 0.4;
 
   bool get showsAllProducts => selectedClasses.isEmpty;
 

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Build the Aystro field training report as DOCX (English and Arabic)."""
+"""Build the Aystro research report as DOCX (English and Arabic)."""
 
 import os
 import docx
@@ -148,7 +148,12 @@ class Builder:
         pf.space_before = Pt(18 if level == 1 else 12)
         pf.space_after = Pt(7)
         pf.keep_with_next = True
-        p.alignment = WD_ALIGN_PARAGRAPH.RIGHT if self.rtl else WD_ALIGN_PARAGRAPH.LEFT
+        # RTL: leave the alignment unset. Inside a `w:bidi` paragraph Word reads
+        # w:jc left/right as start/end, so an explicit "right" lands the heading
+        # on the *left* of the page; the unset default is "start", which is the
+        # right margin in Arabic and needs no flipping.
+        if not self.rtl:
+            p.alignment = WD_ALIGN_PARAGRAPH.LEFT
         r = p.add_run(text)
         _set_fonts(r, self.head_font, self.cs_font, size, True, False, ACCENT)
         if self.rtl:
@@ -216,7 +221,10 @@ class Builder:
         def cell_text(cell, text, bold):
             cell.text = ""
             p = cell.paragraphs[0]
-            p.alignment = WD_ALIGN_PARAGRAPH.RIGHT if self.rtl else WD_ALIGN_PARAGRAPH.LEFT
+            # Same start/end flip as in heading(): unset means "start", which is
+            # the right edge of an RTL cell.
+            if not self.rtl:
+                p.alignment = WD_ALIGN_PARAGRAPH.LEFT
             p.paragraph_format.space_before = Pt(3)
             p.paragraph_format.space_after = Pt(3)
             r = p.add_run(text)
@@ -292,6 +300,9 @@ class Builder:
                 elif kind == "table":
                     self.table(block[1], block[2], block[3], meta)
 
+        if not references:
+            return self.doc
+
         self.page_break()
         self.heading(meta["refs_h"], 1)
         for i, ref in enumerate(references, 1):
@@ -308,18 +319,31 @@ class Builder:
 
 
 def main():
+    # Optional language filter: `python3 build.py ar` builds only the Arabic
+    # edition. Useful while one language is still under review and the other
+    # has not been rewritten to match it yet -- building both would otherwise
+    # silently ship a stale translation alongside an approved one.
+    import sys
+
     import content_en, content_ar
 
     jobs = [
-        (content_en, False, "Times New Roman", "Times New Roman",
-         "Times New Roman", "Aystro_Field_Training_Report_EN"),
-        (content_ar, True, "Times New Roman", "Noto Naskh Arabic",
-         "Times New Roman", "Aystro_Field_Training_Report_AR"),
+        ("en", content_en, False, "Times New Roman", "Times New Roman",
+         "Times New Roman", "Aystro_Research_Report_EN"),
+        ("ar", content_ar, True, "Times New Roman", "Noto Naskh Arabic",
+         "Times New Roman", "Aystro_Research_Report_AR"),
     ]
+    wanted = {a.lower() for a in sys.argv[1:]}
+    if wanted:
+        unknown = wanted - {code for code, *_ in jobs}
+        if unknown:
+            raise SystemExit(f"unknown language(s): {', '.join(sorted(unknown))}")
+        jobs = [j for j in jobs if j[0] in wanted]
+
     out = os.path.join(HERE, "out")
     os.makedirs(out, exist_ok=True)
 
-    for mod, rtl, body, cs, head, name in jobs:
+    for _, mod, rtl, body, cs, head, name in jobs:
         b = Builder(rtl, body, cs, head)
         doc = b.build(mod.META, mod.ABSTRACT, mod.SECTIONS, mod.REFERENCES)
         path = os.path.join(out, name + ".docx")

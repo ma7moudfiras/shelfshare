@@ -168,6 +168,7 @@ class CaptureDraft {
         box: entry.detection.box,
         classId: entry.detection.classId,
         trackerId: entry.detection.trackerId,
+        packaging: entry.detection.packaging,
       ),
       originalClass: entry.originalClass ?? entry.detection.className,
     );

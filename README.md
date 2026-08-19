@@ -198,20 +198,21 @@ without touching a widget.
 
 ### The workflow
 
-The app calls the saved workflow **`aystro-detect-classify-brand`**, a 3-stage
+The app calls the saved workflow **`aystro-detect-classify`**, a multi-stage
 pipeline rather than a single model. Its real definition (read from the
 Roboflow API, not assumed) is:
 
 | | |
 |---|---|
 | **Workspace** | `ma7mouds-workspace` |
-| **Workflow** | `aystro-detect-classify-brand` |
-| **Endpoint** | `POST https://serverless.roboflow.com/ma7mouds-workspace/workflows/aystro-detect-classify-brand` |
-| **Pipeline** | class-agnostic detector (`detect`) → crop each box (`crop`) → brand classifier per crop (`brand`) → write the brand back onto the detection (`refine`) |
+| **Workflow** | `aystro-detect-classify` |
+| **Endpoint** | `POST https://serverless.roboflow.com/ma7mouds-workspace/workflows/aystro-detect-classify` |
+| **Pipeline** | class-agnostic detector (`detect`) → crop each box (`crop`) → brand classifier per crop (`brand_general`) → when the brand is `fanta`, a Fanta-flavor classifier runs on that crop too (`brand_fanta`, gated by `switch_case` so it's skipped for every other brand) → the two results are merged, flavor taking priority (`merge_brands`) → write the final label back onto the detection (`refine`) |
 | **Detector** | `roboflow_core/roboflow_object_detection_model@v3`, model `ma7mouds-workspace/aystro-project-v2/2` |
-| **Classifier** | `roboflow_core/roboflow_classification_model@v3`, model `ma7mouds-workspace/aystro-brand-classifier/1` |
-| **Classes** | `coca-cola`, `pepsi`, `fanta`, `sprite`, `cappy`, `xl_energy` |
-| **Outputs** | `predictions` (brand-refined detections — what the app reads) and `raw_detections` (the detector's own class-agnostic output, useful for debugging) |
+| **Brand classifier** | `roboflow_core/roboflow_classification_model@v3`, model `ma7mouds-workspace/aystro-brand-classifier/1` |
+| **Fanta-flavor classifier** | `roboflow_core/roboflow_classification_model@v3`, model `ma7mouds-workspace/aystro-fanta-classifier/4` (only invoked for crops the brand classifier calls `fanta`) |
+| **Classes** | brand: `coca-cola`, `pepsi`, `fanta`, `sprite`, `cappy`, `xl_energy`; Fanta crops are further refined to `fanta-orange`, `fanta-grape`, or `fanta-redapple` |
+| **Outputs** | `predictions` (brand/flavor-refined detections — what the app reads), `raw_detections` (the detector's own class-agnostic output, useful for debugging), and `brand_predictions` (the flat merged label list) |
 
 Declared runtime parameters, mirrored exactly in `RoboflowParameters`:
 
@@ -219,15 +220,19 @@ Declared runtime parameters, mirrored exactly in `RoboflowParameters`:
 |---|---|---|
 | `detect_confidence` | double | `0.4` |
 | `detect_model_id` | string | `ma7mouds-workspace/aystro-project-v2/2` |
-| `brand_model_id` | string | `ma7mouds-workspace/aystro-brand-classifier/1` |
 
-There is no single `model_id` the way a plain single-model workflow has one.
-Only the detector is overridable per call (`RoboflowParameters.modelId`,
-`ROBOFLOW_MODEL_ID`) — the brand classifier has no per-call override and
-always runs the workflow's own `brand_model_id` default. A geometric rule
+There is no single `model_id` the way a plain single-model workflow has one,
+and there is no per-call override for either classifier stage — both are
+pinned inside the workflow definition itself. Only the detector is overridable
+per call (`RoboflowParameters.modelId`, `ROBOFLOW_MODEL_ID`). A geometric rule
 (`CanShapeRule`) further refines dual-format cans client-side after the
 response comes back, since the classifier's crop-based view can't see box
 aspect ratio; see its doc comment for why.
+
+> **Naming gotcha**: the slug `aystro-detect-classify-brand` (with `-brand`)
+> is a *different*, older, unmaintained workflow that happens to still exist
+> at that URL — it has no Fanta-flavor routing and returns a different
+> `brand_predictions` shape. Don't point `ROBOFLOW_WORKFLOW_ID` at it.
 
 ### The request
 
@@ -236,7 +241,7 @@ directly via `package:http`, mirroring the JS/Python SDKs. Captured photos are
 local files rather than hosted URLs, so the image is sent base64-encoded:
 
 ```jsonc
-POST /ma7mouds-workspace/workflows/aystro-detect-classify-brand
+POST /ma7mouds-workspace/workflows/aystro-detect-classify
 Content-Type: application/json
 
 {
@@ -346,7 +351,7 @@ hard-code the output name:
 
 ### Inference has no dataset side effect
 
-Unlike an earlier version of this workflow, `aystro-detect-classify-brand` has
+Unlike an earlier version of this workflow, `aystro-detect-classify` has
 no `roboflow_core/roboflow_dataset_upload` step — a detection call here does
 not upload the photo into any Roboflow dataset or consume upload quota.
 
@@ -414,8 +419,12 @@ flutter test
   Web deployments rely on the `/api/detect` proxy; `scripts/check-web-bundle.sh`
   enforces this.
 - Detection accuracy is bounded by the trained models behind the pipeline:
-  `aystro-project-v2/2` (detector, mAP@50 ~89%) and `aystro-brand-classifier/1`
+  `aystro-project-v2/2` (detector, mAP@50 ~89%), `aystro-brand-classifier/1`
   (brand classifier, six classes: `coca-cola`, `pepsi`, `fanta`, `sprite`,
-  `cappy`, `xl_energy`).
+  `cappy`, `xl_energy`), and `aystro-fanta-classifier/4` (Fanta-flavor
+  classifier, run only on crops the brand classifier calls `fanta`). None of
+  the three have a recorded accuracy metric yet — Roboflow's model evaluation
+  is a paid-plan feature that only auto-runs at training time; see
+  `docs/report/RESEARCH_NOTES.md` §2.
 - Captured images are resized by the camera preset (`ResolutionPreset.high`) and
   gallery picks are capped at 2048px to keep base64 payloads reasonable.
