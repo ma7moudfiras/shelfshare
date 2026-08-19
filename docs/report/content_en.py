@@ -277,6 +277,12 @@ SECTIONS = [
         "mechanism of the statistical constraint the hypothesis predicted. It "
         "is presented here alongside the annotation distribution of the same "
         "project, so that the effect can be set against its direct cause."),
+  ("fig", "fig_app_v1", "The single-layer approach on a real shelf: 75 "
+        "detections, every label at brand level only — this approach's ceiling "
+        "by construction, since its classes are the brands themselves. The "
+        "share-of-shelf figures beneath are computed at the same level. The "
+        "domain conditions described in Section 7 are also visible here: high "
+        "display density, mutual occlusion, and reflections off the glass."),
   ("table", ["Class", "Annotations", "Share", "mAP@50", "Precision", "Recall"], [
       ["coca-cola", "2,079", "42.6%", "89.27%", "91.2%", "85.4%"],
       ["cappy", "948", "19.4%", "85.62%", "87.8%", "81.5%"],
@@ -353,6 +359,17 @@ SECTIONS = [
         "adjacent categories (lemon with mango, diet with classic) rather than "
         "random scatter — which is what distinguishes a data shortfall from a "
         "modelling deficiency, in a way that can be checked."),
+  ("fig", "fig_app_v2_variants", "The multi-stage architecture on a real Cappy "
+        "shelf: labels here are at flavour level (orange / mango / grape / "
+        "lemon / strawberry) rather than brand level — this is what the routed "
+        "variant layer produces, and it is directly comparable with the "
+        "preceding figure. The low confidences visible (19%–67%) are not a "
+        "display defect but a faithful reflection of what this section "
+        "measures: the Cappy classifier is the weakest link in the system at "
+        "56.2% precision. This is precisely the case that required lowering the "
+        "display threshold to 0.4 (Section 7) and directing active learning at "
+        "this branch (Section 6) — since what is not shown cannot be "
+        "corrected."),
   ("p", "The conclusion is that no measured weakness in the system is "
         "attributable to the architecture or the choice of model; all of them "
         "trace back to specific, measurable data scarcity. This is a decisive "
