@@ -274,21 +274,39 @@ SECTIONS = [
 
   ("h2", "5.2 Per-class signal starvation"),
   ("p", "The per-class breakdown of the single-layer approach exposes the "
-        "mechanism of the statistical constraint the hypothesis predicted."),
-  ("table", ["Class", "mAP@50", "Precision", "Recall"], [
-      ["xl_energy", "91.97%", "90.4%", "90.4%"],
-      ["coca-cola", "89.27%", "91.2%", "85.4%"],
-      ["sprite", "88.29%", "85.1%", "87.7%"],
-      ["fanta", "87.98%", "88.9%", "90.3%"],
-      ["cappy", "85.62%", "87.8%", "81.5%"],
-      ["pepsi", "—", "0%", "0%"],
-   ], "Per-class performance of the single-layer detector: a 6.35-point spread "
-      "across represented classes, and total collapse on an unrepresented one."),
+        "mechanism of the statistical constraint the hypothesis predicted. It "
+        "is presented here alongside the annotation distribution of the same "
+        "project, so that the effect can be set against its direct cause."),
+  ("table", ["Class", "Annotations", "Share", "mAP@50", "Precision", "Recall"], [
+      ["coca-cola", "2,079", "42.6%", "89.27%", "91.2%", "85.4%"],
+      ["cappy", "948", "19.4%", "85.62%", "87.8%", "81.5%"],
+      ["xl_energy", "661", "13.5%", "91.97%", "90.4%", "90.4%"],
+      ["sprite", "651", "13.3%", "88.29%", "85.1%", "87.7%"],
+      ["fanta", "409", "8.4%", "87.98%", "88.9%", "90.3%"],
+      ["pepsi", "131", "2.7%", "—", "0%", "0%"],
+   ], "Per-class performance of the single-layer detector against each class's "
+      "share of the annotation budget. Total: 4,879 annotations."),
   ("p", "Performance varies by 6.35 points between the strongest represented "
         "class and the weakest, and the pepsi class collapses entirely for lack "
         "of any representation in the test split. This is signal starvation "
         "exactly: a limited training signal divided six ways produces uneven "
         "performance bounded by its weakest class, not its strongest."),
+  ("p", "The annotation distribution deserves careful reading, because it does "
+        "not say what it might be assumed to say. Among the represented "
+        "classes the relationship between annotation count and performance is "
+        "not monotonic: xl_energy, with 661 annotations, outperforms coca-cola "
+        "with 2,079 — so tripling the data does not necessarily buy accuracy. "
+        "The correct reading is that there is a floor of representation: above "
+        "it, performance settles into a narrow band not governed by volume "
+        "alone; below it, the class collapses outright. At a 2.7% share, pepsi "
+        "is the only class beneath that floor — and the only one that "
+        "collapsed."),
+  ("p", "The architectural implication is that the problem is not data scarcity "
+        "in aggregate but its division. Splitting the budget six ways is what "
+        "pushed the weakest class below the floor of representation; had the "
+        "same signal been directed entirely at one class, no class would have "
+        "been beneath the floor at all. That is precisely what the next "
+        "approach does."),
   ("p", "The multi-stage approach instead concentrates the entire signal into a "
         "single class scoring 93.33% — higher than any individual class in the "
         "single-layer approach — and defers discrimination to downstream layers "
