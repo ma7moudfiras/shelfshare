@@ -148,7 +148,12 @@ class Builder:
         pf.space_before = Pt(18 if level == 1 else 12)
         pf.space_after = Pt(7)
         pf.keep_with_next = True
-        p.alignment = WD_ALIGN_PARAGRAPH.RIGHT if self.rtl else WD_ALIGN_PARAGRAPH.LEFT
+        # RTL: leave the alignment unset. Inside a `w:bidi` paragraph Word reads
+        # w:jc left/right as start/end, so an explicit "right" lands the heading
+        # on the *left* of the page; the unset default is "start", which is the
+        # right margin in Arabic and needs no flipping.
+        if not self.rtl:
+            p.alignment = WD_ALIGN_PARAGRAPH.LEFT
         r = p.add_run(text)
         _set_fonts(r, self.head_font, self.cs_font, size, True, False, ACCENT)
         if self.rtl:
@@ -216,7 +221,10 @@ class Builder:
         def cell_text(cell, text, bold):
             cell.text = ""
             p = cell.paragraphs[0]
-            p.alignment = WD_ALIGN_PARAGRAPH.RIGHT if self.rtl else WD_ALIGN_PARAGRAPH.LEFT
+            # Same start/end flip as in heading(): unset means "start", which is
+            # the right edge of an RTL cell.
+            if not self.rtl:
+                p.alignment = WD_ALIGN_PARAGRAPH.LEFT
             p.paragraph_format.space_before = Pt(3)
             p.paragraph_format.space_after = Pt(3)
             r = p.add_run(text)

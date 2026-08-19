@@ -43,9 +43,12 @@ ABSTRACT = [
     "Both were evaluated under the same protocol, on the same model "
     "architecture, from the same source photographs.",
 
-    "The multi-stage approach outperformed the single-layer one on every "
-    "detection metric: 93.33% mAP@50 against 88.62%, 76.49% mAP@50-95 against "
-    "70.09%, and 90.9% recall against 84.9% — and it did so even though the "
+    "Every accuracy figure in this study is measured at a single fixed "
+    "confidence threshold of 0.70 — not at each class's own optimal threshold, "
+    "since one system cannot run a different threshold per class. The "
+    "multi-stage approach outperformed the single-layer one on all six "
+    "detection metrics: 93.33% mAP@50 against 88.62%, 76.49% mAP@50-95 against "
+    "70.09%, and 80.7% recall against 74.0% — and it did so even though the "
     "single-layer approach was evaluated on magnified tiles, which is the "
     "easier condition for detection. Its per-class breakdown exposes signal "
     "starvation directly: a 6.35-point spread across its represented classes, "
@@ -241,36 +244,52 @@ SECTIONS = [
  ("5. Experimental results", [
 
   ("h2", "5.1 Detection: single-layer against multi-stage"),
+  ("p", "The accuracy of any classification system is measured at a declared "
+        "confidence threshold: the model emits a confidence score with every "
+        "prediction, and the prediction counts only if that score exceeds an "
+        "agreed threshold. This study adopts a single fixed threshold of 0.70 "
+        "for every classification figure it reports — for both detectors and "
+        "all six classifiers."),
+  ("p", "This choice is methodological, not cosmetic. The evaluation tool "
+        "computes for each class its own “optimal threshold”, the point "
+        "at which that class performs best; here those range from zero to 0.91 "
+        "depending on the class. Reporting each class at its own threshold "
+        "yields high numbers but does not describe a single system, because a "
+        "running system cannot apply a different threshold to each class "
+        "simultaneously. A single fixed threshold describes what actually "
+        "happens when the pipeline runs as one unit, and it is the stricter "
+        "choice — the figures below are lower than their optimal-threshold "
+        "counterparts, deliberately."),
   ("table", ["Metric", "v1 (single, 6 classes)", "v2 (multi, 1 class)",
              "Difference"], [
       ["mAP@50", "88.62%", "93.33%", "+4.71"],
       ["mAP@50-95", "70.09%", "76.49%", "+6.40"],
       ["mAP@75", "80.43%", "87.57%", "+7.14"],
-      ["Precision", "88.9%", "87.4%", "−1.50"],
-      ["Recall", "84.9%", "90.9%", "+6.00"],
+      ["Precision", "91.6%", "92.0%", "+0.40"],
+      ["Recall", "74.0%", "80.7%", "+6.70"],
+      ["F1", "81.6%", "85.9%", "+4.30"],
    ], "Both detectors on a held-out test split, with the same evaluation tool "
-      "and the same model architecture."),
-  ("p", "The multi-stage approach leads on every mean-precision metric and on "
-        "recall, from the same source photographs, and despite the single-layer "
-        "approach being evaluated on magnified tiles — the easier condition for "
-        "detection (Section 3.1). The measured gap is therefore most likely a "
-        "lower bound on the true gap rather than an exaggeration of it."),
-  ("p", "The only regression is 1.5 points of precision, a routine trade for a "
-        "6-point gain in recall. Recall is the more important metric in this "
-        "domain: a product that is never detected corrupts the inventory with "
-        "no way to recover it later, whereas a spurious detection is corrected "
-        "by the human reviewer at the review step."),
+      "and the same model architecture. Precision, recall and F1 at a 0.70 "
+      "threshold for both; the mAP metrics are threshold-independent, being "
+      "computed across all thresholds."),
+  ("p", "The multi-stage approach leads on all six metrics, from the same "
+        "source photographs, and despite the single-layer approach being "
+        "evaluated on magnified tiles — the easier condition for detection "
+        "(Section 3.1). The measured gap is therefore most likely a lower "
+        "bound on the true gap rather than an exaggeration of it."),
+  ("p", "The widest margin is in recall: 80.7% against 74.0%, a gap of 6.7 "
+        "points. This is the more important metric in this domain, because a "
+        "product that is never detected corrupts the inventory with no way to "
+        "recover it later, whereas a spurious detection is corrected by the "
+        "human reviewer. Precision is near-identical (92.0% against 91.6%), "
+        "meaning the recall gain was not bought by conceding precision, as the "
+        "usual trade would have it."),
   ("p", "As a characterisation of the current system alone — not a comparison, "
         "for the reason given in Section 3.1 — its performance across object "
         "sizes is 92.31% for small, 94.47% for medium, and 96.98% for large "
         "objects. It therefore sustains high performance across the whole size "
         "range, a practical requirement in shelf photography where product "
         "dimensions vary widely within a single frame."),
-  ("p", "The evaluation also produced a computed optimal confidence threshold "
-        "of 0.41, effectively identical to the 0.4 threshold already in use in "
-        "the running system — a value that had been set empirically before the "
-        "evaluation was available, and which matched the computed "
-        "recommendation without knowledge of it."),
 
   ("h2", "5.2 Per-class signal starvation"),
   ("p", "The per-class breakdown of the single-layer approach exposes the "
@@ -284,14 +303,15 @@ SECTIONS = [
         "domain conditions described in Section 7 are also visible here: high "
         "display density, mutual occlusion, and reflections off the glass."),
   ("table", ["Class", "Annotations", "Share", "mAP@50", "Precision", "Recall"], [
-      ["coca-cola", "2,079", "42.6%", "89.27%", "91.2%", "85.4%"],
-      ["cappy", "948", "19.4%", "85.62%", "87.8%", "81.5%"],
-      ["xl_energy", "661", "13.5%", "91.97%", "90.4%", "90.4%"],
-      ["sprite", "651", "13.3%", "88.29%", "85.1%", "87.7%"],
-      ["fanta", "409", "8.4%", "87.98%", "88.9%", "90.3%"],
+      ["coca-cola", "2,079", "42.6%", "89.27%", "96.1%", "71.3%"],
+      ["cappy", "948", "19.4%", "85.62%", "89.4%", "75.0%"],
+      ["xl_energy", "661", "13.5%", "91.97%", "96.9%", "66.0%"],
+      ["sprite", "651", "13.3%", "88.29%", "87.9%", "78.5%"],
+      ["fanta", "409", "8.4%", "87.98%", "87.5%", "79.0%"],
       ["pepsi", "131", "2.7%", "—", "0%", "0%"],
-   ], "Per-class performance of the single-layer detector against each class's "
-      "share of the annotation budget. Total: 4,879 annotations."),
+   ], "Per-class performance of the single-layer detector (0.70 threshold) "
+      "against each class's share of the annotation budget. Total: 4,879 "
+      "annotations."),
   ("p", "Performance varies by 6.35 points between the strongest represented "
         "class and the weakest, and the pepsi class collapses entirely for lack "
         "of any representation in the test split. This is signal starvation "
@@ -328,29 +348,62 @@ SECTIONS = [
         "tool."),
 
   ("h2", "5.3 Classification-layer performance"),
+  ("table", ["Classifier", "Precision", "Recall", "F1"], [
+      ["Brand", "100%", "89.1%", "94.0%"],
+      ["Fanta (flavour)", "100%", "88.9%", "93.3%"],
+      ["Packaging", "95.9%", "74.4%", "79.6%"],
+      ["XL Energy (variant)", "66.7%", "66.7%", "66.7%"],
+      ["Coca-Cola (variant)", "66.7%", "55.6%", "60.0%"],
+      ["Cappy (flavour)", "50.0%", "31.2%", "36.5%"],
+   ], "Overall performance of the six classification layers at a 0.70 "
+      "threshold, in descending order."),
+  ("p", "The ordering reveals a regular gradient: the layers at the top are the "
+        "oldest and best supplied with data, those at the bottom the newest and "
+        "most starved. Nothing in this ordering departs from the ordering of "
+        "data volume — which sets up the diagnosis in the section that "
+        "follows."),
   ("table", ["Class", "Precision", "Recall"], [
       ["fanta", "100%", "100%"],
       ["sprite", "100%", "100%"],
-      ["xl_energy", "100%", "95%"],
-      ["cappy", "100%", "92.9%"],
-      ["coca-cola", "100%", "90%"],
+      ["cappy", "100%", "85.7%"],
+      ["coca-cola", "100%", "80%"],
+      ["xl_energy", "100%", "80%"],
       ["pepsi", "no test representation", "—"],
    ], "The brand layer — the decision on which the routing of everything "
       "downstream depends."),
   ("p", "Precision reached 100% for every brand with actual field photography "
-        "behind it. This is an architecturally decisive result: the decision on "
-        "which everything downstream depends does not, in practice, err — so no "
-        "error in the later layers can be attributed to misrouting, which is a "
-        "necessary condition for any conclusion about those layers' performance "
-        "to be valid."),
+        "behind it, even at the strict threshold. This is an architecturally "
+        "decisive result: the decision on which everything downstream depends "
+        "does not, in practice, err — when this classifier issues a verdict, it "
+        "is correct. No error in the later layers can therefore be attributed "
+        "to misrouting, which is a necessary condition for any conclusion about "
+        "those layers' performance to be valid."),
   ("table", ["Classifier", "Strong classes", "Weak classes"], [
       ["Fanta", "orange, redapple (100/100)", "grape (100/66.7)"],
-      ["XL Energy", "three classes (100/100)", "two with no representation"],
+      ["Packaging", "can (94.3/94.3), plastic (93.3/95.5)", "glass (100/33.3)"],
+      ["XL Energy", "classic, red (100/100)",
+       "sugarfree (0/0), two unrepresented"],
       ["Coca-Cola", "classic (100/100)", "zero (100/66.7), diet (0/0)"],
-      ["Packaging", "can (98.5/92.9), plastic (93.3/95.5)", "glass (100/33.3)"],
-      ["Cappy", "grape, mango, strawberry (100/100)",
-       "6 of 12 with no representation"],
-   ], "Variant and packaging layers, as (precision/recall)."),
+      ["Cappy", "mango (100/100)",
+       "grape (100/75), orange (100/50), lemon (100/25), 8 at (0/0)"],
+   ], "Variant and packaging layers at a 0.70 threshold, as "
+      "(precision/recall)."),
+  ("p", "The fixed threshold exposes a distinction invisible at optimal "
+        "thresholds, and it is among the most useful things this analysis "
+        "produced: some weak classes are not wrong but merely unconfident. The "
+        "xl-sugarfree class scores 100% precision and 100% recall at a 0.40 "
+        "threshold, then falls to zero at 0.70 — the model knows it and gets it "
+        "right, but at a confidence lying between the two thresholds. The same "
+        "holds for cappy-strawberry and cappy-apple, and partially for "
+        "cappy-lemon (50% recall at 0.40 against 25% at 0.70)."),
+  ("p", "This is fundamentally different from coca-diet and glass, which fail "
+        "at every threshold without exception. The former case is “learned "
+        "but not trustworthy for automatic decisions” and is addressed by "
+        "more examples to consolidate confidence; the latter is “not "
+        "learned at all” and needs data simply to exist. A single table at "
+        "each class's own optimal threshold cannot separate the two — it shows "
+        "both as succeeding or failing depending on the class — whereas reading "
+        "performance across two thresholds can."),
   ("p", "Analysis of these results reveals one consistent pattern: every weak "
         "class corresponds to a small, countable number of samples — three test "
         "instances for glass, five source images for coca-diet, and between one "
@@ -363,13 +416,13 @@ SECTIONS = [
         "shelf: labels here are at flavour level (orange / mango / grape / "
         "lemon / strawberry) rather than brand level — this is what the routed "
         "variant layer produces, and it is directly comparable with the "
-        "preceding figure. The low confidences visible (19%–67%) are not a "
-        "display defect but a faithful reflection of what this section "
-        "measures: the Cappy classifier is the weakest link in the system at "
-        "56.2% precision. This is precisely the case that required lowering the "
-        "display threshold to 0.4 (Section 7) and directing active learning at "
-        "this branch (Section 6) — since what is not shown cannot be "
-        "corrected."),
+        "preceding figure. What matters most in it is that the confidences "
+        "shown range from 19% to 67% — most of them below the 0.70 threshold "
+        "this study adopts. This is exactly the case the section quantifies: "
+        "the flavour is visually distinguished and usually correct, but below "
+        "the confidence that would license an automatic decision — which is why "
+        "the classifier scores 50% precision and 31.2% recall at that "
+        "threshold, and why active learning was directed at it (Section 6)."),
   ("p", "The conclusion is that no measured weakness in the system is "
         "attributable to the architecture or the choice of model; all of them "
         "trace back to specific, measurable data scarcity. This is a decisive "
@@ -489,11 +542,15 @@ SECTIONS = [
   ("b", "Third, closing the data loop: every human correction is a supervised "
         "signal fit for retraining, so ordinary field usage produces training "
         "data as a by-product — which is what makes Section 6 practicable."),
-  ("p", "The default display threshold was lowered from 0.7 to 0.4 on the basis "
-        "of this third function: the higher threshold was hiding correct but "
-        "lower-confidence detections from the reviewer, which is untenable in a "
-        "phase where that reviewer is being asked to correct — since what is "
-        "never seen cannot be corrected."),
+  ("p", "An operational decision follows from this third function: what is "
+        "shown to the reviewer is not necessarily what is counted in the "
+        "report. The 0.70 threshold used for measurement defines what qualifies "
+        "as a trustworthy automatic verdict, but hiding everything below it "
+        "from the reviewer's screen would deny them sight of precisely the "
+        "cases they are meant to correct — the cases the system most needs "
+        "(Section 5.3). Predictions below the threshold are therefore shown for "
+        "review but not counted automatically, since what is never seen cannot "
+        "be corrected."),
  ]),
 
  ("8. Challenges encountered", [
@@ -547,11 +604,30 @@ SECTIONS = [
   ("b", "4. Two independent splits. The projects generate their splits "
         "separately even though they share the source photographs, which "
         "weakens the comparison in principle."),
-  ("b", "5. The system was not evaluated end to end. Each layer was measured "
-        "separately; error accumulation across the full chain was not measured "
-        "on a unified, manually labelled test set. This is the most important "
-        "missing measurement in the study, since chain accuracy is a product "
-        "rather than an average."),
+  ("b", "5. The system was not evaluated end to end — the most important "
+        "missing measurement in the study."),
+  ("p", "“End to end” means treating the whole system as a single black "
+        "box: it is given a shelf photograph it has never seen, and its final "
+        "output — the complete compound label for every product — is compared "
+        "against a human labelling of that same photograph. What Section 5 "
+        "measured is the performance of each layer in isolation, which is a "
+        "different thing."),
+  ("p", "The difference matters for two reasons. First, the accuracy of a chain "
+        "is a product rather than an average: for a bottle to reach its correct "
+        "label the detector must find it, then the brand layer must be right, "
+        "then the variant classifier must be right — and three steps at 90% "
+        "each yield roughly 73%, not 90%. Second, and more subtly, each layer "
+        "was measured on clean, manually labelled input, whereas in production "
+        "it receives the previous layer's output: a crop that may be shifted, "
+        "clipped at the edge, or partly occluded. The brand layer's 100% "
+        "answers the question “how often is it right on ideal crops?”, "
+        "not “how often is it right on our detector's crops?”."),
+  ("p", "The distinction is practical rather than theoretical: the only figure "
+        "that may honestly be given to a client is the end-to-end one, and it "
+        "will necessarily be lower than every figure in Section 5. The cost of "
+        "closing this gap is not computational but human — fully labelling "
+        "thirty to fifty shelf photographs by hand, with no training and no "
+        "credits required."),
  ]),
 
  ("10. Future work and what is needed", [

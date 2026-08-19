@@ -171,7 +171,7 @@ def signal_starvation_figure():
 
     # -- Panel 1: per-class mAP50 of the single-layer detector ---------------
     classes = ["xl_energy", "coca-cola", "sprite", "fanta", "cappy", "pepsi"]
-    vals = [91.97, 89.27, 88.29, 87.98, 85.62, 0.0]
+    vals = [91.97, 89.27, 88.29, 87.98, 85.62, 0.0]   # mAP@50, threshold-free
     colours = [DETECT] * 5 + [WARN]
 
     bars = ax1.bar(classes, vals, width=0.62, color=colours, zorder=2)
@@ -210,9 +210,10 @@ def signal_starvation_figure():
         ax1.spines[s].set_visible(False)
 
     # -- Panel 2: headline metrics, both detectors ---------------------------
-    metrics = ["mAP@50", "mAP@50-95", "mAP@75", "recall"]
-    v1 = [88.62, 70.09, 80.43, 84.90]
-    v2 = [93.33, 76.49, 87.57, 90.90]
+    # mAP is threshold-free; precision/recall/F1 are at the study's fixed 0.70.
+    metrics = ["mAP@50", "mAP@50-95", "mAP@75", "recall", "F1"]
+    v1 = [88.62, 70.09, 80.43, 74.00, 81.60]
+    v2 = [93.33, 76.49, 87.57, 80.70, 85.90]
 
     xs = range(len(metrics))
     w = 0.36
@@ -235,7 +236,7 @@ def signal_starvation_figure():
     ax2.set_xticklabels(metrics, fontsize=8.4)
     ax2.set_ylabel("%", fontsize=9)
     ax2.set_ylim(0, 112)
-    ax2.set_title("Same source photographs, same architecture, same eval",
+    ax2.set_title("Same photographs, same architecture, one 0.70 threshold",
                   fontsize=10, fontweight="bold", color=ACCENT, pad=10)
     ax2.legend(fontsize=7.8, frameon=False, loc="lower left")
     ax2.grid(axis="y", linewidth=0.6, alpha=0.32)
