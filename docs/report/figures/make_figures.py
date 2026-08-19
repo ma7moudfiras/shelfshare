@@ -313,7 +313,7 @@ def complexity_figure():
     ax2.text(1.50, 27.3, "−65%\n(26.1 s)", ha="left", va="center",
              fontsize=9, color=MUTED, fontweight="bold")
 
-    ax2.text(0.5, 46.5, "identical output, byte for byte",
+    ax2.text(0.5, 46.5, "identical labels on the measured photograph",
              ha="center", va="center", fontsize=8.4, color=CLASSIFY,
              style="italic")
 
