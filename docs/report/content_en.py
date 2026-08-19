@@ -117,6 +117,14 @@ SECTIONS = [
         "distinct label, from which each brand's share of the displayed space "
         "is derived. The target label is compound, built from independent axes "
         "of the form: {brand}-{package}-{variant}-{size}."),
+  ("p", "“Variant” here is an umbrella term for any distinction within a "
+        "single brand, whatever its basis — flavour or taste (fanta-orange, "
+        "cappy-mango), formulation (coca-zero, coca-diet: the same drink at a "
+        "different sugar content), or product line (xl-classic, xl-red). The "
+        "general term is deliberate, because the basis is not uniform across "
+        "brands: Fanta's distinction is purely a flavour one, whereas "
+        "Coca-Cola's is not a flavour at all. Naming the axis “flavour” "
+        "would misdescribe half the connected brands."),
   ("p", "The first three axes — brand, variant, and packaging material — were "
         "completed in this study. The size axis is the planned next step and is "
         "discussed in Section 10."),
@@ -215,7 +223,8 @@ SECTIONS = [
         "brands in a market changes far more slowly than the set of products. "
         "It is the critical layer, because its decision determines the path of "
         "everything downstream."),
-  ("b", "Stage 3 — variant, conditionally routed. If the identified brand has "
+  ("b", "Stage 3 — variant (flavour, formulation, or product line, depending on "
+        "the brand; see Section 2), conditionally routed. If the identified brand has "
         "its own variant classifier, the routing step invokes that classifier "
         "alone; a region not belonging to a connected brand passes through no "
         "variant classifier at all. Four brands are connected in this pattern."),
